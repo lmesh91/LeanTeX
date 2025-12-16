@@ -1,4 +1,5 @@
 // loader.hpp - Loads all dependencies/options for LeanTeX to operate
+#pragma once
 #include <string>
 #include <unordered_map>
 #include <functional>
@@ -18,7 +19,7 @@ public:
     Loader();
     bool initialize();
     void run_jixia();
-    std::string get_option(std::string option);
-    void set_option(std::string option, std::string value) noexcept;
+    const std::string get_option(const std::string& option);
+    void set_option(const std::string& option, const std::string& value) noexcept;
     void parse_argument(int& argp, int argc, char** argv);
 };

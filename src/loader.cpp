@@ -12,7 +12,7 @@
 void handle_code_path(int& argp, int argc, char** argv, Loader& l) {
     (void)argc;
     l.set_option("CodePath", argv[argp]);
-};
+}
 
 // Returns a function that sets the value of
 // a single option
@@ -21,7 +21,7 @@ CLIParser handle_single(std::string arg) {
         ensure_args(argp, argc, argv, 1);
         l.set_option(arg, argv[++argp]);
     };
-};
+}
 
 void handle_help(int& argp, int argc, char** argv, Loader& l) {
     (void)argp, (void)argc, (void)argv;
@@ -33,7 +33,7 @@ void handle_help(int& argp, int argc, char** argv, Loader& l) {
               << "  -w, --working-dir  Specify the working directory."                << std::endl
               << "  -h, --help         Display this help message."                    << std::endl;
     l.set_option("_Exit", "True");
-};
+}
 
 const std::unordered_map<std::string, CLIParser> Loader::CLI_OPTIONS = {
     {"-j", handle_single("Jixia")},
@@ -52,7 +52,7 @@ void Loader::parse_argument(int& argp, int argc, char** argv) {
             CLI_OPTIONS.at(argv[argp])(argp, argc, argv, *this);
         };
     } catch (std::out_of_range& ex) {
-        throw std::runtime_error("Error: Unknown command line option " + std::string(argv[argp]));
+        throw std::runtime_error("Error: Unknown command line option " + std::string(argv[argp]) + " (" + ex.what() + ")");
     }
 }
 
@@ -60,7 +60,7 @@ void Loader::parse_argument(int& argp, int argc, char** argv) {
 Loader::Loader() {
     // Initialize all options with default values
     options["WorkingDir"] = ".leantex";
-};
+}
 
 // Does general initialization that should happen *after* arguments are parsed
 // Returns false if the program should quit
@@ -68,22 +68,29 @@ bool Loader::initialize() {
     if (options.contains("_Exit")) {
         return false;
     }
+    // Check required options
+    if (!options.contains("CodePath")) {
+        throw std::runtime_error("Error: No code path specified.");
+    }
+    if (!options.contains("Jixia")) {
+        throw std::runtime_error("Error: No Jixia path specified. Add one using -j or in an INI file.");
+    }
     // Create the working directories
     std::filesystem::create_directories(get_option("WorkingDir")+"/jixia");
     return true;
 }
 
-std::string Loader::get_option(std::string option) {
+const std::string Loader::get_option(const std::string& option) {
     try {
         return options.at(option);
     } catch (std::out_of_range& ex) {
-        throw std::runtime_error("Error: No value specified for option "+option);
+        throw std::runtime_error("Error: No value specified for option "+option+" ("+ex.what()+")");
     }
-};
+}
 
-void Loader::set_option(std::string option, std::string value) noexcept {
+void Loader::set_option(const std::string& option, const std::string& value) noexcept {
     options[option] = value;
-};
+}
 
 // Run Jixia on all files in a project.
 void Loader::run_jixia() {
@@ -95,9 +102,9 @@ void Loader::run_jixia() {
     // each line, and the abstract syntax tree.
     std::ostringstream command;
     command << "lake env " << get_option("Jixia")
-            << " -e " + get_option("WorkingDir") + "/jixia/" << code_name << ".elab.json"
-            << " -l " + get_option("WorkingDir") + "/jixia/" << code_name << ".lines.json"
-            << " -a " + get_option("WorkingDir") + "/jixia/" << code_name << ".ast.json"
+            << " -e " << get_option("WorkingDir") << "/jixia/" << code_name << ".elab.json"
+            << " -l " << get_option("WorkingDir") << "/jixia/" << code_name << ".lines.json"
+            << " -a " << get_option("WorkingDir") << "/jixia/" << code_name << ".ast.json"
             << " -i " << get_option("CodePath");
     std::system(command.str().c_str());
-};
+}
