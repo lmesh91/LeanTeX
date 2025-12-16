@@ -1,9 +1,10 @@
 // loader.cpp - Loads all dependencies/options for LeanTeX to operate
 #include <sstream>
+#include <iostream>
+#include <fstream>
 #include <filesystem>
 #include <cstdlib>
 #include <functional>
-#include <iostream>
 #include "loader.hpp"
 #include "utility/misc.hpp"
 
@@ -43,6 +44,7 @@ void handle_help(int& argp, int argc, char** argv, Loader& l) {
               << "  -j, --jixia        Specify a path to the Jixia binary."           << std::endl
               << "  -w, --working-dir  Specify the working directory."                << std::endl
               << "  -h, --help         Display this help message."                    << std::endl
+              << "  -i, --ini          Specify an INI configuration file."            << std::endl
               << "  -v, --verbose      Set verbose logging."                          << std::endl
               << "  -q, --quiet        Set quiet logging."                            << std::endl;
     l.set_option("_Exit", "True");
@@ -53,6 +55,8 @@ const std::unordered_map<std::string, CLIParser> Loader::CLI_OPTIONS = {
     {"--jixia", handle_single("Jixia")},
     {"-w", handle_single("WorkingDir")},
     {"--working-dir", handle_single("WorkingDir")},
+    {"-i", handle_single("_IniFile")},
+    {"--ini", handle_single("_IniFile")},
     {"-h", handle_help},
     {"--help", handle_help},
     {"-v", handle_log(LogLevel::DEBUG)},
@@ -78,12 +82,51 @@ void Loader::parse_argument(int& argp, int argc, char** argv) {
 Loader::Loader() {
     // Initialize all options with default values
     options["WorkingDir"] = ".leantex";
+    options["_IniFile"] = "leantex.ini";
 }
+
+void Loader::load_ini() {
+    log("Loading INI file " + options["_IniFile"], LogLevel::DEBUG);
+    std::ifstream ini_file(options["_IniFile"]);
+    if (!ini_file.is_open()) {
+        log("No INI file found at " + options["_IniFile"], tampered["_IniFile"] ? LogLevel::WARNING : LogLevel::DEBUG);
+        return;
+    }
+    std::string line;
+    std::getline(ini_file, line);
+    if (strip(line) != "[LeanTeX]") {
+        log("Ignoring INI file with invalid header: " + line, LogLevel::WARNING);
+        ini_file.close();
+        return;
+    }
+    while (std::getline(ini_file, line)) {
+        // Ignore comments and empty lines
+        if (strip(line).empty() || strip(line)[0] == '#' || strip(line)[0] == ';') continue;
+        size_t eq_pos = line.find('=');
+        if (eq_pos == std::string::npos) {
+            log("Ignoring malformed INI line: " + line, LogLevel::WARNING);
+            continue;
+        }
+        std::string key = strip(line.substr(0, eq_pos));
+        std::string value = strip(line.substr(eq_pos + 1));
+        // Only set the option if it wasn't tampered with via command line
+        if (key[0] == '_') {
+            log("Cannot set special option " + key + " in an INI file", LogLevel::WARNING);
+        } else if (!tampered.contains(key)) {
+            log("Setting option " + key + " to " + value + " from INI file", LogLevel::DEBUG);
+            set_option(key, value);
+        } else {
+            log("Skipping INI option " + key + " because it was set via command line", LogLevel::DEBUG);
+        }
+    }
+    ini_file.close();
+};
 
 // Does general initialization that should happen *after* arguments are parsed
 // Returns false if the program should quit
 bool Loader::initialize() {
     log("Initializing Loader", LogLevel::DEBUG);
+    load_ini();
     if (options.contains("_Exit")) {
         return false;
     }
@@ -109,6 +152,7 @@ const std::string Loader::get_option(const std::string& option) {
 
 void Loader::set_option(const std::string& option, const std::string& value) noexcept {
     options[option] = value;
+    tampered[option] = true;
 }
 
 // Run Jixia on all files in a project.

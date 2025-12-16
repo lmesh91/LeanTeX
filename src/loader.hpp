@@ -12,14 +12,17 @@ typedef std::function<void(int&, int, char**, Loader&)> CLIParser;
 class Loader {
 private:
     static const std::unordered_map<std::string, CLIParser> CLI_OPTIONS;
-    // todo - INI file parsing
     // todo - automatically download and compile Jixia from GitHub
-    std::unordered_map<std::string, std::string> options; 
+    std::unordered_map<std::string, std::string> options;
+    // Keeps track of if an option was set by the user.
+    // This allows the INI file to override defaults but not user settings.
+    std::unordered_map<std::string, bool> tampered;
 public:
     Loader();
     bool initialize();
     void run_jixia();
     const std::string get_option(const std::string& option);
+    void load_ini();
     void set_option(const std::string& option, const std::string& value) noexcept;
     void parse_argument(int& argp, int argc, char** argv);
 };

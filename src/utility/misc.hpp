@@ -64,3 +64,6 @@ void log(const std::string& message, LogLevel level = LogLevel::INFO,
          std::ostream& out = std::cout, LogLevel* new_log_level = nullptr);
 
 void set_log_level(LogLevel level);
+
+// Strips leading and trailing whitespace from a string
+std::string strip(const std::string& str);

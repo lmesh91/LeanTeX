@@ -49,3 +49,12 @@ void set_log_level(LogLevel level) {
     // Note that the other arguments are ignored in the log function
     log("", LogLevel::DEBUG, "", ANSIColor::RESET, std::cout, &level);
 }
+
+// Strips leading and trailing whitespace from a string
+std::string strip(const std::string& str) {
+    size_t start = str.find_first_not_of(" \t\n\r");
+    size_t end = str.find_last_not_of(" \t\n\r");
+    if (start == std::string::npos || end == std::string::npos)
+        return "";
+    return str.substr(start, end - start + 1);
+}
