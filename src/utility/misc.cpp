@@ -7,7 +7,7 @@
 // e.g. ~/Code/Example.lean => Example
 std::string get_filename(const std::string& file) {
     // Windows paths also treat \ as a slash, while Linux paths only use /
-    #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+    #if (defined(WIN32) || defined(_WIN32) || defined(__WIN32)) && !defined(__CYGWIN__)
     size_t slash_pos = file.find_last_of('/\\');
     #else
     size_t slash_pos = file.rfind('/');
@@ -38,6 +38,7 @@ void log(const std::string& message, LogLevel level, const std::string& componen
          const Color& comp_color, std::ostream& out, LogLevel* new_log_level) {
     // We store the state of the current log level as a static variable,
     // so it persists without needing to be global.
+    
     static LogLevel current_level = LogLevel::INFO;
     if (new_log_level != nullptr) {
         current_level = *new_log_level;
@@ -54,6 +55,7 @@ void log(const std::string& message, LogLevel level, const std::string& componen
 
 void set_log_level(LogLevel level) {
     // Note that the other arguments are ignored in the log function
+    // when passing a new log level. They are only there to match the signature.
     log("", LogLevel::DEBUG, "", ANSIColor::RESET, std::cout, &level);
 }
 

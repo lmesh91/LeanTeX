@@ -7,7 +7,7 @@
 class Loader;
 
 // Arguments: Position of flag, argc, argv, loader class
-typedef std::function<void(int&, int, char**, Loader&)> CLIParser;
+using CLIParser = std::function<void(int&, int, char**, Loader&)>;
 
 class Loader {
 private:
@@ -21,7 +21,7 @@ public:
     Loader();
     bool initialize();
     void run_jixia();
-    const std::string get_option(const std::string& option);
+    std::string get_option(const std::string& option);
     void load_ini();
     void set_option(const std::string& option, const std::string& value) noexcept;
     bool is_tampered(const std::string& option);

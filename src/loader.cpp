@@ -36,14 +36,14 @@ CLIParser handle_single(const std::string& arg) {
 // Returns a function that sets the log level
 CLIParser handle_log(LogLevel level) {
     return [level](int& argp, int argc, char** argv, Loader& l) {
-        (void)argp, (void)argc, (void)argv, (void)l;
+        (void)argp; (void)argc; (void)argv; (void)l;
         log("Setting log level to " + log_names.at(level), LogLevel::DEBUG);
         set_log_level(level);
     };
 }
 
 void handle_help(int& argp, int argc, char** argv, Loader& l) {
-    (void)argp, (void)argc, (void)argv;
+    (void)argp; (void)argc; (void)argv;
     log("Printing help message", LogLevel::DEBUG);
     std::cout << "leantex: A tool to convert Lean 4 programs into LaTeX documents.\n" << std::endl
               << "Usage:"                                                             << std::endl
@@ -74,7 +74,7 @@ const std::unordered_map<std::string, CLIParser> Loader::CLI_OPTIONS = {
 };
 
 void Loader::parse_argument(int& argp, int argc, char** argv) {
-    if (argv[argp] == nullptr || std::string(argv[argp]).empty()) {
+    if (argp >= argc || std::string(argv[argp]).empty()) {
         throw std::runtime_error("Empty command line argument at position " + std::to_string(argp));
     }
     log("Parsing argument " + std::string(argv[argp]), LogLevel::DEBUG);
@@ -86,7 +86,7 @@ void Loader::parse_argument(int& argp, int argc, char** argv) {
         };
     } catch (std::out_of_range& ex) {
         throw std::runtime_error("Unknown command line option " + std::string(argv[argp]) + " (" + ex.what() + ")");
-    } catch (std::exception& ex) {
+    } catch (std::invalid_argument& ex) {
         throw std::runtime_error("Failed to parse argument " + std::string(argv[argp]) + " (" + ex.what() + ")");
     }
 }
@@ -109,12 +109,12 @@ void Loader::load_ini() {
     std::getline(ini_file, line);
     if (strip(line) != "[LeanTeX]") {
         log("Ignoring INI file with invalid header: " + line, LogLevel::WARNING);
-        ini_file.close();
         return;
     }
     while (std::getline(ini_file, line)) {
         // Ignore comments and empty lines
-        if (strip(line).empty() || strip(line)[0] == '#' || strip(line)[0] == ';') continue;
+        std::string stripped = strip(line);
+        if (stripped.empty() || stripped[0] == '#' || stripped[0] == ';') continue;
         size_t eq_pos = line.find('=');
         if (eq_pos == std::string::npos) {
             log("Ignoring malformed INI line: " + line, LogLevel::WARNING);
@@ -125,14 +125,15 @@ void Loader::load_ini() {
         // Only set the option if it wasn't tampered with via command line
         if (key[0] == '_') {
             log("Cannot set special option " + key + " in an INI file", LogLevel::WARNING);
-        } else if (!tampered.contains(key)) {
+            continue;
+        } else if (!tampered.contains(key)) { // Note that this checks if the key is not found, not if it is false
             log("Setting option " + key + " to " + value + " from INI file", LogLevel::DEBUG);
             set_option(key, value);
         } else {
             log("Skipping INI option " + key + " because it was set via command line", LogLevel::DEBUG);
+            continue;
         }
     }
-    ini_file.close();
 };
 
 // Does general initialization that should happen *after* arguments are parsed
@@ -155,7 +156,7 @@ bool Loader::initialize() {
     return true;
 }
 
-const std::string Loader::get_option(const std::string& option) {
+std::string Loader::get_option(const std::string& option) {
     try {
         return options.at(option);
     } catch (std::out_of_range& ex) {
