@@ -1,15 +1,19 @@
 #include <iostream>
 #include "loader.hpp"
+#include "utility/misc.hpp"
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cout << "Usage: leantex file.lean" << std::endl;
-        return 0;
+    try {
+        Loader l;
+        // Parse arguments
+        for (int i = 1; i < argc; i++) {
+            // Note: This can handle arguments of flags because i is passed by reference to parse_argument
+            l.parse_argument(i, argc, argv);
+        }
+        if (!l.initialize()) return 0;
+        l.run_jixia();
+    } catch (std::exception& ex) {
+        log(ex.what(), LogLevel::ERROR);
+        return 1;
     }
-    Loader l(argv[1]);
-    // This part of the code is temporary, before INI files are processed
-    if (argc >= 3) {
-        l.set_jixia_path(argv[2]);
-    };
-    l.run_jixia();
 }
