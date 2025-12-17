@@ -12,6 +12,10 @@
 // argp points to the argument itself rather than the flag.
 void handle_code_path(int& argp, int argc, char** argv, Loader& l) {
     (void)argc;
+    if (l.is_tampered("CodePath")) {
+        log("Option CodePath already set, using first value: " + l.get_option("CodePath"), LogLevel::WARNING);
+        return;
+    }
     log("Setting option CodePath to " + std::string(argv[argp]), LogLevel::DEBUG);
     l.set_option("CodePath", argv[argp]);
 }
@@ -19,6 +23,10 @@ void handle_code_path(int& argp, int argc, char** argv, Loader& l) {
 // Returns a function that sets the value of a single option
 CLIParser handle_single(const std::string& arg) {
     return [arg](int& argp, int argc, char** argv, Loader& l) {
+        if (l.is_tampered(arg)) {
+            log("Option " + arg + " already set, using first value: " + l.get_option(arg), LogLevel::WARNING);
+            return;
+        }
         ensure_args(argp, argc, argv, 1);
         log("Setting option " + arg + " to " + std::string(argv[argp+1]), LogLevel::DEBUG);
         l.set_option(arg, argv[++argp]);
@@ -66,6 +74,9 @@ const std::unordered_map<std::string, CLIParser> Loader::CLI_OPTIONS = {
 };
 
 void Loader::parse_argument(int& argp, int argc, char** argv) {
+    if (argv[argp] == nullptr || std::string(argv[argp]).empty()) {
+        throw std::runtime_error("Empty command line argument at position " + std::to_string(argp));
+    }
     log("Parsing argument " + std::string(argv[argp]), LogLevel::DEBUG);
     try {
         if (argv[argp][0] != '-') { // Default option is code path
@@ -75,6 +86,8 @@ void Loader::parse_argument(int& argp, int argc, char** argv) {
         };
     } catch (std::out_of_range& ex) {
         throw std::runtime_error("Unknown command line option " + std::string(argv[argp]) + " (" + ex.what() + ")");
+    } catch (std::exception& ex) {
+        throw std::runtime_error("Failed to parse argument " + std::string(argv[argp]) + " (" + ex.what() + ")");
     }
 }
 
@@ -155,6 +168,10 @@ void Loader::set_option(const std::string& option, const std::string& value) noe
     tampered[option] = true;
 }
 
+bool Loader::is_tampered(const std::string& option) {
+    return tampered.contains(option);
+}
+
 // Run Jixia on all files in a project.
 void Loader::run_jixia() {
     log("Running Jixia on " + get_option("CodePath"));
@@ -163,6 +180,7 @@ void Loader::run_jixia() {
     std::string code_name = get_filename(get_option("CodePath"));
     // Running Jixia gets information about term elaboration, the proof state after
     // each line, and the abstract syntax tree.
+    // todo: verify that the paths are valid (prevent users from executing arbitrary commands)
     std::ostringstream command;
     command << "lake env " << get_option("Jixia")
             << " -e " << get_option("WorkingDir") << "/jixia/" << code_name << ".elab.json"
