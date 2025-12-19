@@ -21,6 +21,7 @@ public:
     Loader();
     bool initialize();
     void run_jixia();
+    void convert();
     std::string get_option(const std::string& option);
     void load_ini();
     void set_option(const std::string& option, const std::string& value) noexcept;

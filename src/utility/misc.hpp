@@ -3,9 +3,13 @@
 #include <string>
 #include <iostream>
 #include <unordered_map>
+#include "utility/json.hpp"
+using json = nlohmann::json;
 
 // Returns just the name of a file
 std::string get_filename(const std::string& file);
+
+json get_json(const std::string& path);
 
 // Throws an error if there are not enough arguments to handle a command line flag.
 void ensure_args(int argp, int argc, char** argv, int count);

@@ -1,6 +1,7 @@
 // utility/misc.cpp - Utility functions
 #include "utility/misc.hpp"
 #include <sstream>
+#include <fstream>
 #include <iostream>
 
 // Returns just the name of a file
@@ -20,6 +21,17 @@ std::string get_filename(const std::string& file) {
         return file.substr(name_start, dot_pos-name_start);
     }
 }
+
+// Gets JSON of a file
+json get_json(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open JSON file: " + path);
+    }
+    json j;
+    file >> j;
+    return j;
+};
 
 // Throws an error if there are not enough arguments to handle a command line flag.
 void ensure_args(int argp, int argc, char** argv, int count) {

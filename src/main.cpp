@@ -12,6 +12,7 @@ int main(int argc, char* argv[]) {
         }
         if (!l.initialize()) return 0;
         l.run_jixia();
+        l.convert();
     } catch (std::exception& ex) {
         log(ex.what(), LogLevel::ERROR);
         return 1;

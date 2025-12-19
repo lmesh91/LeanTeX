@@ -1,4 +1,5 @@
-// lean_ir.hpp - Lean IR representation
+// ir/lean.hpp - Lean IR representation
+#pragma once
 #include "utility/json.hpp"
 #include <memory>
 #include <string>
@@ -10,13 +11,11 @@ General notes compared to the Lean 4 Expr type:
 - Every function-based type (e.g. LApp, LLambda) combines all arguments,
   rather that nesting them into single-argument applications.
 - Some types (e.g. variables, let/have, literals) are simplified for clarity.
-- File and position metadata are also included when possible.
+- Position metadata is also included when possible.
 */
 
 struct LExpr {
     // Metadata shared by all expressions
-    // Not everything needs to be filled in
-    std::string file;
     int pos; // Position is used instead of line/column to match Jixia output
 
     virtual ~LExpr() = default;
@@ -27,9 +26,6 @@ struct LExpr {
     // Converts the metadata to JSON
     json meta_json() const {
         json j;
-        if (!file.empty()) {
-            j["file"] = file;
-        }
         if (pos >= 0) {
             j["pos"] = pos;
         }

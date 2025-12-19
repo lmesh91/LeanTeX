@@ -7,6 +7,7 @@
 #include <functional>
 #include "loader.hpp"
 #include "utility/misc.hpp"
+#include "lean_to_ir.hpp"
 
 // Used to handle code path. This function is unique in that
 // argp points to the argument itself rather than the flag.
@@ -185,8 +186,18 @@ void Loader::run_jixia() {
     std::ostringstream command;
     command << "lake env " << get_option("Jixia")
             << " -e " << get_option("WorkingDir") << "/jixia/" << code_name << ".elab.json"
-            << " -l " << get_option("WorkingDir") << "/jixia/" << code_name << ".lines.json"
-            << " -a " << get_option("WorkingDir") << "/jixia/" << code_name << ".ast.json"
             << " -i " << get_option("CodePath");
     std::system(command.str().c_str());
+}
+
+// Runs all conversions steps to get from Lean to LaTeX
+void Loader::convert() {
+    log("Converting Lean code to Lean IR");
+    std::string code_name = get_filename(get_option("CodePath"));
+    // Load elaboration JSON files
+    json elab_json = get_json(get_option("WorkingDir") + "/jixia/" + code_name + ".elab.json");
+    log("Loaded elaboration JSON files", LogLevel::DEBUG);
+    // Convert to Lean IR
+    std::vector<std::unique_ptr<LExpr>> ir = lean_to_ir(elab_json);
+    log("Converted Lean code to Lean IR with " + std::to_string(ir.size()) + " top-level expressions", LogLevel::DEBUG);
 }
