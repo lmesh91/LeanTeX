@@ -57,6 +57,10 @@ std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
     // The last one is skipped since it is always "end of input".
     for (size_t i = 0; i < elab.size() - 1; i++) {
         const json& decl = at(elab, i, "ref", "node");
+        if (decl.at("kind") != json::array({"Lean", "Parser", "Command", "declaration"})) {
+            log("Skipping non-declaration "+kind_to_string(decl.at("kind")),LogLevel::DEBUG);
+            continue;
+        }
         // The first argument is declaration modifiers. This may be used
         // to parse custom attributes in the future, but for now it is ignored.
         if (node(decl, 1).at("kind") == json::array({"Lean", "Parser", "Command", "theorem"})) {
@@ -80,7 +84,17 @@ LTheorem parse_theorem(const json& elab) {
     std::string name = at(child(elab, -1), "info", "term", "value");
     std::unique_ptr<LExpr> type = parse_expr(at(child(elab, -2), "info", "term", "typeExpr"));
 
-    const json& proof_decl = child(child(elab, -3), 0);
+    // In some cases there are more terms between proof and proofName. We keep checking to find it.
+    int i = -3;
+    while (i + (int)elab.at("children").size() >= 0) {
+        try {
+            child(child(elab, i), 0);
+            break;
+        } catch (std::exception& ex) {
+            i--;
+        }
+    }
+    const json& proof_decl = child(child(elab, i), 0);
     std::unique_ptr<LProof> proof = nullptr;
     if (proof_decl.at("info").contains("term")) {
         proof = std::make_unique<LTermProof>(parse_expr(at(proof_decl, "info", "term", "valueExpr")));
@@ -93,6 +107,7 @@ LTheorem parse_theorem(const json& elab) {
 // This function assumes that the AST comes from the elaborator,
 // rather than the direct AST of the code. This makes everything
 // explicit and simplifies syntax.
+// This is a heavy work in progress; most types of syntax are not supported.
 std::unique_ptr<LExpr> parse_expr(const json& ast) {
     if (ast.contains("ident")) {
         // All constants and variables are "ident" nodes
@@ -100,8 +115,54 @@ std::unique_ptr<LExpr> parse_expr(const json& ast) {
     } else if (ast.contains("atom")) {
         // Atoms are just syntax components that don't have meaning here
         return nullptr;
+    } else if (ast.contains("node")) {
+        return parse_expr(ast.at("node"));
     } else {
-        log("Unsupported expression kind", LogLevel::WARNING);
+        // Assume we are INSIDE a node
+        if (!ast.contains("kind")) {
+            // We must be inside an ident or atom
+            if (ast.contains("rawVal")) {
+                return std::make_unique<LIdent>(ast.at("rawVal"));
+            } else {
+                return nullptr;
+            }
+        }
+        const json& expr_kind = ast.at("kind");
+        // Constants that have their own Term types
+        if (expr_kind == json::array({"Lean", "Parser", "Term", "prop"})) {
+            return std::make_unique<LIdent>("Prop");
+        } else if (expr_kind == json::array({"Lean", "Parser", "Term", "sorry"})) {
+            return std::make_unique<LIdent>("sorry");
+        // todo Lean.Parser.Term.type
+        } else if (expr_kind == json::array({"Lean", "Parser", "Term", "forall"})) {
+            // todo: Forall AST is of the form ["forall", binders, null, ",", body]
+            // Treat everything between the "forall" and "," as potential binders
+            std::vector<std::unique_ptr<LBinder>> params = {};
+            const json& binder_decl = node(ast, 1);
+            for (size_t i = 0; i < binder_decl.at("args").size(); i++) {
+                params.push_back(parse_binder(node(binder_decl, i)));
+            }
+            std::unique_ptr<LExpr> body = parse_expr(node(ast, -1));
+            return std::make_unique<LArrow>(std::move(params), std::move(body));
+        } 
+        log("Unsupported expression kind " + kind_to_string(expr_kind), LogLevel::WARNING);
         return nullptr;
     }
+};
+
+// Parses a binder object. Note that the type of the binder is irrelevant here.
+std::unique_ptr<LBinder> parse_binder(const json& ast) {
+    // Binder ASTs are of the form ["(", names, ..., type, ")"]
+    std::vector<std::string> names = {};
+    int offset = 2;
+    if (ast.at("kind") == json::array({"Lean", "Parser", "Term", "explicitBinder"})) {
+        // Explicit binders (ones with parentheses) have extra info
+        offset = 3;
+    }
+    for (size_t i = 1; i < ast.at("args").size() - offset; i++) {
+        names.push_back(node(node(ast, i), 0).at("rawVal"));
+    }
+    // We go two layers deep since the first layer is [":", type]
+    std::unique_ptr<LExpr> type = parse_expr(node(node(ast, ast.at("args").size() - offset), 1));
+    return std::make_unique<LBinder>(std::move(names), std::move(type));
 };

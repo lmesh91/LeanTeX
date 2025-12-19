@@ -54,3 +54,4 @@ std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab);
 LTheorem parse_theorem(const json& elab);
 std::string parse_decl_id(const json& elab);
 std::unique_ptr<LExpr> parse_expr(const json& ast);
+std::unique_ptr<LBinder> parse_binder(const json& ast);

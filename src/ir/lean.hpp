@@ -40,25 +40,29 @@ struct LIdent : public LExpr {
     }
 };
 
-// Used for inline variables bound to a type, e.g. p : Prop
+// Used for inline variables bound to a type, e.g. p : Prop or x y : Nat
 struct LBinder : public LExpr {
-    std::string name;
+    std::vector<std::string> names;
     std::unique_ptr<LExpr> type;
 
-    LBinder(std::string name, std::unique_ptr<LExpr> type) : name(std::move(name)), type(std::move(type)) {};
+    LBinder(std::vector<std::string> names, std::unique_ptr<LExpr> type) : names(std::move(names)), type(std::move(type)) {};
 
     json to_json() const override {
         if (!type) {
-            throw std::runtime_error("LBinder \"" + name + "\" missing type");
+            throw std::runtime_error("LBinder \"" + names[0] + "\" missing type");
         }
-        return json{{"kind", "binder"}, {"name", name}, {"type", type->to_json()}};
+        return json{{"kind", "binder"}, {"names", names}, {"type", type->to_json()}};
     }
 
     std::string to_string() const noexcept override {
-        if (!type) {
-            return name + " : ?nullptr";
+        std::string out;
+        for (const std::string& name : names) {
+            out += name + " ";
         }
-        return name + " : " + type->to_string();
+        if (!type) {
+            return out + ": ?nullptr";
+        }
+        return  out + ": " + type->to_string();
     }
 };
 
