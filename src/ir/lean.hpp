@@ -11,57 +11,32 @@ General notes compared to the Lean 4 Expr type:
 - Every function-based type (e.g. LApp, LLambda) combines all arguments,
   rather that nesting them into single-argument applications.
 - Some types (e.g. variables, let/have, literals) are simplified for clarity.
-- Position metadata is also included when possible.
 */
 
 struct LExpr {
-    // Metadata shared by all expressions
-    int pos; // Position is used instead of line/column to match Jixia output
 
     virtual ~LExpr() = default;
 
     // Converts the expression to JSON for debugging purposes
     virtual json to_json() const = 0;
 
-    // Converts the metadata to JSON
-    json meta_json() const {
-        json j;
-        if (pos >= 0) {
-            j["pos"] = pos;
-        }
-        return j;
-    }
-
     // Converts the type to a string in a safe way,
     // so it can be used in error messages.
     virtual std::string to_string() const noexcept = 0;
 };
 
-// Used for constants that have been defined elsewhere
-// (e.g. other theorems or functions)
-struct LConst : public LExpr {
+// Identifiers - used for constants and variables
+struct LIdent : public LExpr {
     std::string name;
 
+    LIdent(std::string name) : name(std::move(name)) {};
+
     json to_json() const override {
-        return json{{"kind", "const"}, {"name", name}, {"meta", meta_json()}};
+        return json{{"kind", "const"}, {"name", name}};
     }
 
     std::string to_string() const noexcept override {
-        return "C_" + name;
-    }
-};
-
-// Used for variables defined within an object
-// (e.g. parameters used in a function or proof)
-struct LVar : public LExpr {
-    std::string name;
-
-    json to_json() const override {
-        return json{{"kind", "var"}, {"name", name}, {"meta", meta_json()}};
-    }
-
-    std::string to_string() const noexcept override {
-        return "V_" + name;
+        return name;
     }
 };
 
@@ -70,15 +45,20 @@ struct LBinder : public LExpr {
     std::string name;
     std::unique_ptr<LExpr> type;
 
+    LBinder(std::string name, std::unique_ptr<LExpr> type) : name(std::move(name)), type(std::move(type)) {};
+
     json to_json() const override {
         if (!type) {
             throw std::runtime_error("LBinder \"" + name + "\" missing type");
         }
-        return json{{"kind", "binder"}, {"name", name}, {"type", type->to_json()}, {"meta", meta_json()}};
+        return json{{"kind", "binder"}, {"name", name}, {"type", type->to_json()}};
     }
 
     std::string to_string() const noexcept override {
-        return name;
+        if (!type) {
+            return name + " : ?nullptr";
+        }
+        return name + " : " + type->to_string();
     }
 };
 
@@ -86,6 +66,8 @@ struct LBinder : public LExpr {
 struct LApp : public LExpr {
     std::unique_ptr<LExpr> fn;
     std::vector<std::unique_ptr<LExpr>> args;
+
+    LApp(std::unique_ptr<LExpr> fn, std::vector<std::unique_ptr<LExpr>> args) : fn(std::move(fn)), args(std::move(args)) {};
 
     json to_json() const override {
         if (!fn) {
@@ -98,14 +80,29 @@ struct LApp : public LExpr {
             }
             jargs.push_back(arg->to_json());
         }
-        return json{{"kind", "app"}, {"fn", fn->to_json()}, {"args", jargs}, {"meta", meta_json()}};
+        return json{{"kind", "app"}, {"fn", fn->to_json()}, {"args", jargs}};
     }
 
+    // This syntax differs slightly from what Lean would do, so that parentheses are always explicit.
     std::string to_string() const noexcept override {
-        if (!fn) {
-            return "A_<nullptr>";
+        std::string fn_str = "?nullptr";
+        if (fn) {
+            fn_str = fn->to_string();
+        };
+        std::vector<std::string> arg_strs;
+        for (const auto& arg : args) {
+            if (arg) {
+                arg_strs.push_back(arg->to_string());
+            } else {
+                arg_strs.push_back("?nullptr");
+            }
         }
-        return "A_" + fn->to_string();
+        std::string out = fn_str;
+        for (const auto& arg_str : arg_strs) {
+            out += " (" + arg_str + ")";
+        }
+        return out;
+
     }
 };
 
@@ -113,6 +110,8 @@ struct LApp : public LExpr {
 struct LLambda : public LExpr {
     std::vector<std::unique_ptr<LBinder>> params;
     std::unique_ptr<LExpr> body;
+
+    LLambda(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
 
     json to_json() const override {
         json jparams = json::array();
@@ -125,19 +124,25 @@ struct LLambda : public LExpr {
         if (!body) {
             throw std::runtime_error("LLambda " + to_string() + " missing body");
         }
-        return json{{"kind", "lambda"}, {"params", jparams}, {"body", body->to_json()}, {"meta", meta_json()}};
+        return json{{"kind", "lambda"}, {"params", jparams}, {"body", body->to_json()}};
     }
 
     std::string to_string() const noexcept override {
-        std::string out = "L_";
+        std::string out = "fun ";
         for (const auto& param : params) {
             if (param) {
-                out += param->to_string() + "_";
+                out += "(" + param->to_string() + ") ";
             } else {
-                out += "<nullptr>_";
+                out += "(?nullptr) ";
             }
         }
-        return out.substr(0, out.size() - 1); // Remove trailing underscore
+        out += "=> ";
+        if (body) {
+            out += body->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        return out;
     }
 };
 
@@ -146,6 +151,8 @@ struct LLambda : public LExpr {
 struct LArrow : public LExpr {
     std::vector<std::unique_ptr<LBinder>> params;
     std::unique_ptr<LExpr> body;
+
+    LArrow(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
 
     json to_json() const override {
         json jparams = json::array();
@@ -158,52 +165,73 @@ struct LArrow : public LExpr {
         if (!body) {
             throw std::runtime_error("LArrow " + to_string() + " missing body");
         }
-        return json{{"kind", "arrow"}, {"params", jparams}, {"body", body->to_json()}, {"meta", meta_json()}};
+        return json{{"kind", "arrow"}, {"params", jparams}, {"body", body->to_json()}};
     }
 
+    // This syntax differs slightly from what Lean would do,
+    // as type names are always explicit and ASCII arrows are used.
     std::string to_string() const noexcept override {
-        std::string out = "R_";
+        std::string out;
         for (const auto& param : params) {
             if (param) {
-                out += param->to_string() + "_";
+                out += "(" + param->to_string() + ") -> ";
             } else {
-                out += "<nullptr>_";
+                out += "(?nullptr) -> ";
             }
         }
-        return out.substr(0, out.size() - 1); // Remove trailing underscore
+        if (body) {
+            out += body->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        return out;
     }
 };
 
 // Let and have expressions, e.g. have x : Nat := 5
 // In Lean 4's Expr, these also store information about the scope where the variable is used.
 // However, this is not needed in Lean IR.
-struct LLet : public LExpr {
+struct LHave : public LExpr {
     std::unique_ptr<LBinder> binder;
     std::unique_ptr<LExpr> value;
 
+    LHave(std::unique_ptr<LBinder> binder, std::unique_ptr<LExpr> value) : binder(std::move(binder)), value(std::move(value)) {};
+
     json to_json() const override {
         if (!binder) {
-            throw std::runtime_error("LLet missing binder");
+            throw std::runtime_error("LHave missing binder");
         }
         if (!value) {
-            throw std::runtime_error("LLet " + to_string() + " missing value");
+            throw std::runtime_error("LHave " + to_string() + " missing value");
         }
-        return json{{"kind", "let"}, {"binder", binder->to_json()}, {"value", value->to_json()}, {"meta", meta_json()}};
+        return json{{"kind", "have"}, {"binder", binder->to_json()}, {"value", value->to_json()}};
     }
 
     std::string to_string() const noexcept override {
-        if (!binder) {
-            return "H_<nullptr>";
+        std::string out = "have ";
+        if (binder) {
+            out += binder->to_string();
+        } else {
+            out += "?nullptr";
         }
-        return "H_" + binder->to_string();
+        out += " := ";
+        if (value) {
+            out += value->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        return out;
     }
 };
 
 // Integer and string literals
 struct LLiteral : public LExpr {
     std::string value; // Store all literals as strings for simplicity
+
+    LLiteral(std::string value) : value(std::move(value)) {};
+
     json to_json() const override {
-        return json{{"kind", "literal"}, {"value", value}, {"meta", meta_json()}};
+        return json{{"kind", "literal"}, {"value", value}};
     }
     std::string to_string() const noexcept override {
         return value;
@@ -222,44 +250,52 @@ struct LProof : public LExpr {};
 struct LTermProof : public LProof {
     std::unique_ptr<LExpr> expr;
 
+    LTermProof(std::unique_ptr<LExpr> expr) : expr(std::move(expr)) {};
+
     json to_json() const override {
         if (!expr) {
             throw std::runtime_error("LTermProof missing expr");
         }
-        return json{{"kind", "term"}, {"expr", expr->to_json()}, {"meta", meta_json()}};
+        return json{{"kind", "term"}, {"expr", expr->to_json()}};
     }
 
     std::string to_string() const noexcept override {
         if (!expr)
-            return "P_<nullptr>";
-        return "P_" + expr->to_string();
+            return "?nullptr";
+        return expr->to_string();
     }
 };
 
 struct LTheorem : public LExpr {
     std::string name;
-    std::vector<std::unique_ptr<LBinder>> params;
     std::unique_ptr<LExpr> type;
     std::unique_ptr<LProof> proof;
 
+    LTheorem(std::string name, std::unique_ptr<LExpr> type, std::unique_ptr<LProof> proof) : name(std::move(name)), type(std::move(type)), proof(std::move(proof)) {};
+
     json to_json() const override {
-        json jparams = json::array();
-        for (const auto& param : params) {
-            if (!param) {
-                throw std::runtime_error("LTheorem " + name + " has null parameter");
-            }
-            jparams.push_back(param->to_json());
-        }
         if (!type) {
             throw std::runtime_error("LTheorem " + name + " missing type");
         }
         if (!proof) {
             throw std::runtime_error("LTheorem " + name + " missing proof");
         }
-        return json{{"kind", "theorem"}, {"name", name}, {"params", jparams}, {"type", type->to_json()}, {"proof", proof->to_json()}, {"meta", meta_json()}};
+        return json{{"kind", "theorem"}, {"name", name}, {"type", type->to_json()}, {"proof", proof->to_json()}};
     };
 
     std::string to_string() const noexcept override {
-        return "T_" + name;
+        std::string out = "theorem " + name + " : ";
+        if (type) {
+            out += type->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        out += " := ";
+        if (proof) {
+            out += proof->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        return out;
     }
 };

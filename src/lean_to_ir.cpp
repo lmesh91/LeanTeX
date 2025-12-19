@@ -21,7 +21,7 @@ std::string kind_to_string(const json& kind) {
 const json& node(const json& j, int n) {
     // The final key could be "node", "ident", or "atom" depending on what it is
     try {
-        const json& node_container = j.at("args").at(n);
+        const json& node_container = j.at("args").at(n >= 0 ? n : j.at("args").size() + n);
         if (node_container.contains("node")) {
             return node_container.at("node");
         } else if (node_container.contains("ident")) {
@@ -36,17 +36,32 @@ const json& node(const json& j, int n) {
     }
 }
 
+// Gets the child directly from an elaboration tree
+const json& child(const json& j, int n) {
+    try {
+        return j.at("children").at(n >= 0 ? n : j.at("children").size() + n);
+    } catch (json::out_of_range& ex) {
+        throw std::runtime_error("Elaboration node does not have child at index " + std::to_string(n) + " (" + ex.what() + ")");
+    }
+}
+
+// Overload for zero keys: just return the original object.
+inline const json& at(const json& j) {
+    return j;
+}
+
+
 std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
     std::vector<std::unique_ptr<LExpr>> out;
     // Elaboration data is ordered by declarations.
     // The last one is skipped since it is always "end of input".
     for (size_t i = 0; i < elab.size() - 1; i++) {
-        const json& decl = elab.at(i).at("ref").at("node");
+        const json& decl = at(elab, i, "ref", "node");
         // The first argument is declaration modifiers. This may be used
         // to parse custom attributes in the future, but for now it is ignored.
         if (node(decl, 1).at("kind") == json::array({"Lean", "Parser", "Command", "theorem"})) {
             out.push_back(std::make_unique<LTheorem>(parse_theorem(elab.at(i))));
-            log("Parsed theorem "+out.back()->to_string(), LogLevel::DEBUG);
+            log("Parsed "+out.back()->to_string(), LogLevel::DEBUG);
         } else {
             log("Declaration of type "+kind_to_string(node(decl, 1).at("kind"))+" is not supported, skipping", LogLevel::WARNING);
             continue;
@@ -57,22 +72,36 @@ std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
 
 LTheorem parse_theorem(const json& elab) {
     // The AST for theorem is of the form ["theorem", declId, declSig, declVal]
-    // The elaboration for theorem is of the form []
-    const json& ast = node(elab.at("ref").at("node"), 1); // We go through the declaration node
-    std::string name = parse_decl_id(node(ast, 1));
+    // The elaboration for theorem *appears* to be of the form:
+    // [param1Type, param1, ..., proofType, param1, ..., proof, proofName1, proofName2]
+    // where global variables only appear in the first parameter list.
+    // proofName1 has a type that includes global variables; the other one doesn't.
 
-    // This part is all placeholder
-    std::vector<std::unique_ptr<LBinder>> params = {};
-    std::unique_ptr<LExpr> type = nullptr;
+    std::string name = at(child(elab, -1), "info", "term", "value");
+    std::unique_ptr<LExpr> type = parse_expr(at(child(elab, -2), "info", "term", "typeExpr"));
+
+    const json& proof_decl = child(child(elab, -3), 0);
     std::unique_ptr<LProof> proof = nullptr;
-    LTheorem th;
-    th.name = std::move(name);
-    th.params = std::move(params);
-    th.type = std::move(type);
-    th.proof = std::move(proof);
-    return th;
-};
+    if (proof_decl.at("info").contains("term")) {
+        proof = std::make_unique<LTermProof>(parse_expr(at(proof_decl, "info", "term", "valueExpr")));
+    } else {
+        log("Only term proofs are supported, skipping theorem " + name, LogLevel::WARNING);
+    }
+    return LTheorem{name, std::move(type), std::move(proof)};
+}
 
-std::string parse_decl_id(const json& decl) {
-    return node(decl, 0).at("rawVal");
+// This function assumes that the AST comes from the elaborator,
+// rather than the direct AST of the code. This makes everything
+// explicit and simplifies syntax.
+std::unique_ptr<LExpr> parse_expr(const json& ast) {
+    if (ast.contains("ident")) {
+        // All constants and variables are "ident" nodes
+        return std::make_unique<LIdent>(at(ast, "ident", "rawVal"));
+    } else if (ast.contains("atom")) {
+        // Atoms are just syntax components that don't have meaning here
+        return nullptr;
+    } else {
+        log("Unsupported expression kind", LogLevel::WARNING);
+        return nullptr;
+    }
 };
