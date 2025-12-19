@@ -10,7 +10,7 @@ using json = nlohmann::json;
 General notes compared to the Lean 4 Expr type:
 - Every function-based type (e.g. LApp, LLambda) combines all arguments,
   rather that nesting them into single-argument applications.
-- Some types (e.g. variables, let/have, literals) are simplified for clarity.
+- Some types are combined/split up to more align with Lean Syntax.
 */
 
 struct LExpr {
@@ -110,12 +110,12 @@ struct LApp : public LExpr {
     }
 };
 
-// Lambda expressions (e.g. fun x : Nat => x)
+// Lambda expressions (e.g. fun x => x)
 struct LLambda : public LExpr {
-    std::vector<std::unique_ptr<LBinder>> params;
+    std::vector<std::unique_ptr<LExpr>> params;
     std::unique_ptr<LExpr> body;
 
-    LLambda(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
+    LLambda(std::vector<std::unique_ptr<LExpr>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
 
     json to_json() const override {
         json jparams = json::array();
@@ -142,21 +142,21 @@ struct LLambda : public LExpr {
         }
         out += "=> ";
         if (body) {
-            out += body->to_string();
+            out += "(" + body->to_string() + ")";
         } else {
-            out += "?nullptr";
+            out += "(?nullptr)";
         }
         return out;
     }
 };
 
-// Arrow expressions, including dependent function types
-// (e.g. Nat -> Nat, or ∀ x : Nat, x > 0)
+// Arrow expressions
+// (e.g. Nat -> Nat)
 struct LArrow : public LExpr {
-    std::vector<std::unique_ptr<LBinder>> params;
+    std::vector<std::unique_ptr<LExpr>> params;
     std::unique_ptr<LExpr> body;
 
-    LArrow(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
+    LArrow(std::vector<std::unique_ptr<LExpr>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
 
     json to_json() const override {
         json jparams = json::array();
@@ -184,9 +184,52 @@ struct LArrow : public LExpr {
             }
         }
         if (body) {
-            out += body->to_string();
+            out += "(" + body->to_string() + ")";
         } else {
-            out += "?nullptr";
+            out += "(?nullptr)";
+        }
+        return out;
+    }
+};
+
+// Forall expressions. These are *dependent* arrows
+// (e.g. ∀ x : Nat, x > 0)
+struct LForAll : public LExpr {
+    std::vector<std::unique_ptr<LBinder>> params;
+    std::unique_ptr<LExpr> body;
+
+    LForAll(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
+
+    json to_json() const override {
+        json jparams = json::array();
+        for (const auto& param : params) {
+            if (!param) {
+                throw std::runtime_error("LForAll " + to_string() + " has null parameter");
+            }
+            jparams.push_back(param->to_json());
+        }
+        if (!body) {
+            throw std::runtime_error("LForAll " + to_string() + " missing body");
+        }
+        return json{{"kind", "forall"}, {"params", jparams}, {"body", body->to_json()}};
+    }
+
+    // This syntax differs slightly from what Lean would do,
+    // as type names are always explicit and ASCII arrows are used.
+    std::string to_string() const noexcept override {
+        std::string out = "∀";
+        for (const auto& param : params) {
+            if (param) {
+                out += " (" + param->to_string() + ")";
+            } else {
+                out += " (?nullptr)";
+            }
+        }
+        out += ", ";
+        if (body) {
+            out += "(" + body->to_string() + ")";
+        } else {
+            out += "(?nullptr)";
         }
         return out;
     }

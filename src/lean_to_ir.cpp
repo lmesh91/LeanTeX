@@ -108,6 +108,7 @@ LTheorem parse_theorem(const json& elab) {
 // rather than the direct AST of the code. This makes everything
 // explicit and simplifies syntax.
 // This is a heavy work in progress; most types of syntax are not supported.
+// Potential idea: make a JSON schema for this. Depends on how repetitive it ends up being.
 std::unique_ptr<LExpr> parse_expr(const json& ast) {
     if (ast.contains("ident")) {
         // All constants and variables are "ident" nodes
@@ -133,9 +134,38 @@ std::unique_ptr<LExpr> parse_expr(const json& ast) {
             return std::make_unique<LIdent>("Prop");
         } else if (expr_kind == json::array({"Lean", "Parser", "Term", "sorry"})) {
             return std::make_unique<LIdent>("sorry");
-        // todo Lean.Parser.Term.type
+        } else if (expr_kind == json::array({"Lean", "Parser", "Term", "type"})) {
+            // todo: support types of higher universe levels
+            return std::make_unique<LIdent>("Type");
+        // Literals
+        } else if (expr_kind == json::array({"num"}) || expr_kind == json::array({"str"})) {
+            return std::make_unique<LLiteral>(node(ast, 0).at("val"));
+        // Everything else, in alphabetical order
+        } else if (expr_kind == json::array({"Lean", "Parser", "Term", "app"})) {
+            // Application AST is of the form [fn, [args]]
+            std::unique_ptr<LExpr> fn = parse_expr(node(ast, 0));
+            std::vector<std::unique_ptr<LExpr>> args = {};
+            for (size_t i = 0; i < node(ast, 1).at("args").size(); i++) {
+                args.push_back(parse_expr(node(node(ast, 1), i)));
+            };
+            return std::make_unique<LApp>(std::move(fn), std::move(args));
+        } else if (expr_kind == json::array({"Lean", "Parser", "Term", "arrow"})) {
+            // Arrow AST is of the form [typeIn, "->", typeOut]
+            // todo: nest multiple arrows
+            std::vector<std::unique_ptr<LExpr>> params = {};
+            params.push_back(parse_expr(node(ast, 0)));
+            std::unique_ptr<LExpr> body = parse_expr(node(ast, 2));
+            return std::make_unique<LArrow>(std::move(params), std::move(body));
+        } else if (expr_kind == json::array({"Lean", "Parser", "Term", "basicFun"})) {
+            // Lambda AST is of the form [[args], null, "=>", body]
+            std::vector<std::unique_ptr<LExpr>> params = {};
+            for (size_t i = 0; i < node(ast, 0).at("args").size(); i++) {
+                params.push_back(parse_expr(node(node(ast, 0), i)));
+            };
+            std::unique_ptr<LExpr> body = parse_expr(node(ast, 3));
+            return std::make_unique<LLambda>(std::move(params), std::move(body));
         } else if (expr_kind == json::array({"Lean", "Parser", "Term", "forall"})) {
-            // todo: Forall AST is of the form ["forall", binders, null, ",", body]
+            // Forall AST is of the form ["forall", [binders], null, ",", body]
             // Treat everything between the "forall" and "," as potential binders
             std::vector<std::unique_ptr<LBinder>> params = {};
             const json& binder_decl = node(ast, 1);
@@ -143,26 +173,38 @@ std::unique_ptr<LExpr> parse_expr(const json& ast) {
                 params.push_back(parse_binder(node(binder_decl, i)));
             }
             std::unique_ptr<LExpr> body = parse_expr(node(ast, -1));
-            return std::make_unique<LArrow>(std::move(params), std::move(body));
+            return std::make_unique<LForAll>(std::move(params), std::move(body));
+        } else if (expr_kind == json::array({"Lean", "Parser", "Term", "fun"})) {
+            // Fun AST is of the form ["fun", basicFun]
+            return parse_expr(node(ast, 1));
         } 
         log("Unsupported expression kind " + kind_to_string(expr_kind), LogLevel::WARNING);
         return nullptr;
     }
 };
 
-// Parses a binder object. Note that the type of the binder is irrelevant here.
+// Parses a binder object.
 std::unique_ptr<LBinder> parse_binder(const json& ast) {
+    if (ast.at("kind") == json::array({"Lean", "Parser", "Term", "implicitBinder"})) {
     // Binder ASTs are of the form ["(", names, ..., type, ")"]
-    std::vector<std::string> names = {};
-    int offset = 2;
-    if (ast.at("kind") == json::array({"Lean", "Parser", "Term", "explicitBinder"})) {
-        // Explicit binders (ones with parentheses) have extra info
-        offset = 3;
+        std::vector<std::string> names = {};
+        for (size_t i = 0; i < node(ast, 1).at("args").size(); i++) {
+            names.push_back(node(node(ast, 1), i).at("rawVal"));
+        }
+        // We go two layers deep since the first layer is [":", type]
+        std::unique_ptr<LExpr> type = parse_expr(node(node(ast, ast.at("args").size() - 2), 1));
+        return std::make_unique<LBinder>(std::move(names), std::move(type));
+    } else if (ast.at("kind") == json::array({"Lean", "Parser", "Term", "explicitBinder"})) {
+        // Binder ASTs are of the form ["{", names, ..., type, idk, "}"]
+        std::vector<std::string> names = {};
+        for (size_t i = 0; i < node(ast, 1).at("args").size(); i++) {
+            names.push_back(node(node(ast, 1), i).at("rawVal"));
+        }
+        // We go two layers deep since the first layer is [":", type]
+        std::unique_ptr<LExpr> type = parse_expr(node(node(ast, ast.at("args").size() - 3), 1));
+        return std::make_unique<LBinder>(std::move(names), std::move(type));
+    } else {
+        log("Unsupported binder kind " + kind_to_string(ast.at("kind")), LogLevel::WARNING);
+        return nullptr;
     }
-    for (size_t i = 1; i < ast.at("args").size() - offset; i++) {
-        names.push_back(node(node(ast, i), 0).at("rawVal"));
-    }
-    // We go two layers deep since the first layer is [":", type]
-    std::unique_ptr<LExpr> type = parse_expr(node(node(ast, ast.at("args").size() - offset), 1));
-    return std::make_unique<LBinder>(std::move(names), std::move(type));
 };

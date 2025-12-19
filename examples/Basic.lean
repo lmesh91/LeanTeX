@@ -4,6 +4,7 @@ variable {p : Prop} {α : Type}
 theorem truth : True :=
   True.intro
 
+-- Known issue: LeanTeX does not get that "h" is of type "False" here
 theorem ex_falso (h : False) : p :=
   False.elim h
 

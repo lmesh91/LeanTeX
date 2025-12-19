@@ -1,13 +1,13 @@
 variable (p q r : Prop)
 
 -- commutativity of ∧ and ∨
-example : p ∧ q ↔ q ∧ p :=
+theorem comm_and : p ∧ q ↔ q ∧ p :=
     Iff.intro
         (fun h : p ∧ q =>
         show q ∧ p from And.intro h.right h.left)
         (fun h : q ∧ p =>
         show p ∧ q from And.intro h.right h.left)
-example : p ∨ q ↔ q ∨ p :=
+theorem comm_or : p ∨ q ↔ q ∨ p :=
     Iff.intro
         (fun h : p ∨ q =>
         show q ∨ p from Or.elim h
@@ -19,7 +19,7 @@ example : p ∨ q ↔ q ∨ p :=
             (fun hq : p => Or.intro_left q hq))
 
 -- associativity of ∧ and ∨
-example : (p ∧ q) ∧ r ↔ p ∧ (q ∧ r) :=
+theorem assoc_and : (p ∧ q) ∧ r ↔ p ∧ (q ∧ r) :=
     have mp :=
         (fun h : (p ∧ q) ∧ r =>
         show p ∧ (q ∧ r) from And.intro (h.left.left) (And.intro h.left.right h.right))
@@ -27,7 +27,7 @@ example : (p ∧ q) ∧ r ↔ p ∧ (q ∧ r) :=
         (fun h : p ∧ (q ∧ r) =>
         show (p ∧ q) ∧ r from And.intro (And.intro h.left h.right.left) (h.right.right))
     Iff.intro mp mpr
-example : (p ∨ q) ∨ r ↔ p ∨ (q ∨ r) :=
+theorem assoc_or : (p ∨ q) ∨ r ↔ p ∨ (q ∨ r) :=
     have mp :=
         (fun h : (p ∨ q) ∨ r =>
         show p ∨ (q ∨ r) from Or.elim h
@@ -49,7 +49,7 @@ example : (p ∨ q) ∨ r ↔ p ∨ (q ∨ r) :=
     Iff.intro mp mpr
 
 -- distributivity
-example : p ∧ (q ∨ r) ↔ (p ∧ q) ∨ (p ∧ r) :=
+theorem dist_and_or : p ∧ (q ∨ r) ↔ (p ∧ q) ∨ (p ∧ r) :=
     have mp :=
         (fun h : p ∧ (q ∨ r) => Or.elim h.right
             (fun hq : q => Or.intro_left (p ∧ r) (And.intro h.left hq))
@@ -62,7 +62,7 @@ example : p ∧ (q ∨ r) ↔ (p ∧ q) ∨ (p ∧ r) :=
         )
     Iff.intro mp mpr
 
-example : p ∨ (q ∧ r) ↔ (p ∨ q) ∧ (p ∨ r) :=
+theorem dist_or_and : p ∨ (q ∧ r) ↔ (p ∨ q) ∧ (p ∨ r) :=
     have mp :=
         (fun h : p ∨ (q ∧ r) => Or.elim h
             (fun hp : p => And.intro (Or.intro_left q hp) (Or.intro_left r hp))
@@ -79,7 +79,7 @@ example : p ∨ (q ∧ r) ↔ (p ∨ q) ∧ (p ∨ r) :=
     Iff.intro mp mpr
 
 -- other properties
-example : (p → (q → r)) ↔ (p ∧ q → r) :=
+theorem imp_imp_iff_and_imp : (p → (q → r)) ↔ (p ∧ q → r) :=
     have mp :=
         (fun h : p → (q → r) =>
             fun hpq : (p ∧ q) =>
@@ -92,7 +92,7 @@ example : (p → (q → r)) ↔ (p ∧ q → r) :=
             h (And.intro hp hq)
         )
     Iff.intro mp mpr
-example : ((p ∨ q) → r) ↔ (p → r) ∧ (q → r) :=
+theorem dist_or_imp : ((p ∨ q) → r) ↔ (p → r) ∧ (q → r) :=
     have mp :=
         (fun h : (p ∨ q) → r => And.intro
             (fun hp : p => h (Or.intro_left q hp))
@@ -106,7 +106,7 @@ example : ((p ∨ q) → r) ↔ (p → r) ∧ (q → r) :=
             )
         )
     Iff.intro mp mpr
-example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
+theorem de_morgan_or : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
     have mp :=
         (fun h : ¬(p ∨ q) =>
             have hnp : ¬p := (fun hp : p => h (Or.intro_left q hp))
@@ -123,7 +123,7 @@ example : ¬(p ∨ q) ↔ ¬p ∧ ¬q :=
             )
         )
     Iff.intro mp mpr
-example : ¬p ∨ ¬q → ¬(p ∧ q) :=
+theorem de_morgan_and : ¬p ∨ ¬q → ¬(p ∧ q) :=
     (fun h : ¬p ∨ ¬q => Or.elim h
         (fun hnp : ¬p =>
             fun hpq : (p ∧ q) => absurd hpq.left hnp
@@ -132,21 +132,21 @@ example : ¬p ∨ ¬q → ¬(p ∧ q) :=
             fun hpq : (p ∧ q) => absurd hpq.right hnq
             )
     )
-example : ¬(p ∧ ¬p) :=
+theorem not_and_not : ¬(p ∧ ¬p) :=
     fun h : p ∧ ¬p => absurd h.left h.right
-example : p ∧ ¬q → ¬(p → q) :=
+theorem and_not_imp_not_imp : p ∧ ¬q → ¬(p → q) :=
     fun h : p ∧ ¬q =>
         have hp : p := h.left
         have hnq : ¬q := h.right
         fun hpq : p → q => absurd (hpq hp) hnq
-example : ¬p → (p → q) :=
+theorem not_imp_imp : ¬p → (p → q) :=
     fun h : ¬p => fun hp : p => absurd hp h
-example : (¬p ∨ q) → (p → q) :=
+theorem or_imp_imp : (¬p ∨ q) → (p → q) :=
     fun h : ¬ p ∨ q =>
         Or.elim h
         (fun hnp: ¬p => fun hp : p => absurd hp hnp)
-        (fun hq : q => fun hp : p => hq)
-example : p ∨ False ↔ p :=
+        (fun hq : q => fun _ : p => hq)
+theorem or_domination : p ∨ False ↔ p :=
     have mp :=
         fun h : p ∨ False => Or.elim h
             (fun hp : p => hp)
@@ -154,11 +154,11 @@ example : p ∨ False ↔ p :=
     have mpr :=
         fun h : p => Or.intro_left False h
     Iff.intro mp mpr
-example : p ∧ False ↔ False :=
+theorem and_identity : p ∧ False ↔ False :=
     have mp := fun h : p ∧ False => h.right
     have mpr := fun h : False => False.elim h
     Iff.intro mp mpr
-example : (p → q) → (¬q → ¬p) :=
+theorem contrapositive : (p → q) → (¬q → ¬p) :=
     fun h : p → q =>
         fun hnq : ¬q => fun hp : p => absurd (h hp) hnq
 
