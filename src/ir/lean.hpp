@@ -42,23 +42,20 @@ struct LIdent : public LExpr {
 
 // Used for inline variables bound to a type, e.g. p : Prop or x y : Nat
 struct LBinder : public LExpr {
-    std::vector<std::string> names;
+    std::string name;
     std::unique_ptr<LExpr> type;
 
-    LBinder(std::vector<std::string> names, std::unique_ptr<LExpr> type) : names(std::move(names)), type(std::move(type)) {};
+    LBinder(std::string name, std::unique_ptr<LExpr> type) : name(std::move(name)), type(std::move(type)) {};
 
     json to_json() const override {
         if (!type) {
-            throw std::runtime_error("LBinder \"" + names[0] + "\" missing type");
+            throw std::runtime_error("LBinder \"" + name + "\" missing type");
         }
-        return json{{"kind", "binder"}, {"names", names}, {"type", type->to_json()}};
+        return json{{"kind", "binder"}, {"name", name}, {"type", type->to_json()}};
     }
 
     std::string to_string() const noexcept override {
-        std::string out;
-        for (const std::string& name : names) {
-            out += name + " ";
-        }
+        std::string out = name + " ";
         if (!type) {
             return out + ": ?nullptr";
         }
@@ -112,10 +109,10 @@ struct LApp : public LExpr {
 
 // Lambda expressions (e.g. fun x => x)
 struct LLambda : public LExpr {
-    std::vector<std::unique_ptr<LExpr>> params;
+    std::vector<std::unique_ptr<LBinder>> params;
     std::unique_ptr<LExpr> body;
 
-    LLambda(std::vector<std::unique_ptr<LExpr>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
+    LLambda(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
 
     json to_json() const override {
         json jparams = json::array();
@@ -153,35 +150,29 @@ struct LLambda : public LExpr {
 // Arrow expressions
 // (e.g. Nat -> Nat)
 struct LArrow : public LExpr {
-    std::vector<std::unique_ptr<LExpr>> params;
+    std::unique_ptr<LExpr> param;
     std::unique_ptr<LExpr> body;
 
-    LArrow(std::vector<std::unique_ptr<LExpr>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {};
+    LArrow(std::unique_ptr<LExpr> param, std::unique_ptr<LExpr> body) : param(std::move(param)), body(std::move(body)) {};
 
     json to_json() const override {
-        json jparams = json::array();
-        for (const auto& param : params) {
-            if (!param) {
-                throw std::runtime_error("LArrow " + to_string() + " has null parameter");
-            }
-            jparams.push_back(param->to_json());
+        if (!param) {
+            throw std::runtime_error("LArrow " + to_string() + " has null parameter");
         }
         if (!body) {
             throw std::runtime_error("LArrow " + to_string() + " missing body");
         }
-        return json{{"kind", "arrow"}, {"params", jparams}, {"body", body->to_json()}};
+        return json{{"kind", "arrow"}, {"param", param->to_json()}, {"body", body->to_json()}};
     }
 
     // This syntax differs slightly from what Lean would do,
     // as type names are always explicit and ASCII arrows are used.
     std::string to_string() const noexcept override {
         std::string out;
-        for (const auto& param : params) {
-            if (param) {
-                out += "(" + param->to_string() + ") -> ";
-            } else {
-                out += "(?nullptr) -> ";
-            }
+        if (param) {
+            out += "(" + param->to_string() + ") -> ";
+        } else {
+            out += "(?nullptr) -> ";
         }
         if (body) {
             out += "(" + body->to_string() + ")";
@@ -313,12 +304,15 @@ struct LTermProof : public LProof {
     }
 };
 
+// A theorem.
+// e.g. theorem ex_falso (p : Prop) : False -> p := False.elim
 struct LTheorem : public LExpr {
     std::string name;
+    std::vector<std::unique_ptr<LBinder>> params;
     std::unique_ptr<LExpr> type;
     std::unique_ptr<LProof> proof;
 
-    LTheorem(std::string name, std::unique_ptr<LExpr> type, std::unique_ptr<LProof> proof) : name(std::move(name)), type(std::move(type)), proof(std::move(proof)) {};
+    LTheorem(std::string name, std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> type, std::unique_ptr<LProof> proof) : name(std::move(name)), params(std::move(params)), type(std::move(type)), proof(std::move(proof)) {};
 
     json to_json() const override {
         if (!type) {
@@ -327,11 +321,26 @@ struct LTheorem : public LExpr {
         if (!proof) {
             throw std::runtime_error("LTheorem " + name + " missing proof");
         }
-        return json{{"kind", "theorem"}, {"name", name}, {"type", type->to_json()}, {"proof", proof->to_json()}};
+        json jparams = json::array();
+        for (const auto& param : params) {
+            if (!param) {
+                throw std::runtime_error("LTheorem " + name + " has null parameter");
+            }
+            jparams.push_back(param->to_json());
+        }
+        return json{{"kind", "theorem"}, {"name", name}, {"params", jparams}, {"type", type->to_json()}, {"proof", proof->to_json()}};
     };
 
     std::string to_string() const noexcept override {
-        std::string out = "theorem " + name + " : ";
+        std::string out = "theorem " + name + " ";
+        for (const auto& param : params) {
+            if (param) {
+                out += "(" + param->to_string() + ") ";
+            } else {
+                out += "(?nullptr) ";
+            }
+        }
+        out += ": ";
         if (type) {
             out += type->to_string();
         } else {

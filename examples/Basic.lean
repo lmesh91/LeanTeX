@@ -4,13 +4,10 @@ variable {p : Prop} {α : Type}
 theorem truth : True :=
   True.intro
 
-/-
-Known issue: LeanTeX does not keep track of "h" when parsing this proof
-theorem ex_falso (h : False) : p :=
+theorem ex_falso_a (h : False) : p :=
   False.elim h
--/
 
-theorem ex_falso : False → p :=
+theorem ex_falso_b : False → p :=
   False.elim
 
 theorem one_plus_one_eq_two : 1 + 1 = 2 :=
@@ -19,6 +16,7 @@ theorem one_plus_one_eq_two : 1 + 1 = 2 :=
 theorem implies_self : p → p :=
   id
 
+-- todo: improve parsing of holes
 theorem refl_all : ∀ x : α, x = x :=
   fun _ => rfl
 

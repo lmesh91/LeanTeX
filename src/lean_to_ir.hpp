@@ -5,8 +5,10 @@
 
 // Utility functions
 std::string kind_to_string(const json& kind);
+std::string kind(const json& j);
 const json& node(const json& j, int n);
-const json& child(const json& j, int n);
+json child(const json& j, int n);
+json child(std::string type, const json& j, int n);
 
 // Takes in an arbitrary number of keys and traverses through the JSON object with them
 // This function itself is pretty messy but it makes the rest of the code much cleaner
@@ -52,6 +54,4 @@ std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab);
 
 // Parsers for individual syntax
 LTheorem parse_theorem(const json& elab);
-std::string parse_decl_id(const json& elab);
-std::unique_ptr<LExpr> parse_expr(const json& ast);
-std::unique_ptr<LBinder> parse_binder(const json& ast);
+std::unique_ptr<LExpr> parse_expr(const json& elab);
