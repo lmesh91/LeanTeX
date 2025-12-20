@@ -1,4 +1,5 @@
 // lean_to_ir.cpp - Conversion from Lean AST/Elaboration to Lean IR
+#include "loader.hpp"
 #include "lean_to_ir.hpp"
 #include "utility/misc.hpp"
 
@@ -56,18 +57,19 @@ std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
     // Elaboration data is ordered by declarations.
     // The last one is skipped since it is always "end of input".
     for (size_t i = 0; i < elab.size() - 1; i++) {
-        const json& decl = at(elab, i, "ref", "node");
-        if (decl.at("kind") != json::array({"Lean", "Parser", "Command", "declaration"})) {
-            log("Skipping non-declaration "+kind_to_string(decl.at("kind")),LogLevel::DEBUG);
+        if (at(elab, i, "ref", "kind") != json::array({"Lean", "Parser", "Command", "declaration"})) {
+            log("Skipping non-declaration "+kind_to_string(at(elab, i, "ref", "kind")),LogLevel::DEBUG);
             continue;
         }
+        std::string decl = at(elab, i, "ref", "str");
+        decl = decl.substr(0, decl.find_first_of(" "));
         // The first argument is declaration modifiers. This may be used
         // to parse custom attributes in the future, but for now it is ignored.
-        if (node(decl, 1).at("kind") == json::array({"Lean", "Parser", "Command", "theorem"})) {
+        if (decl == "theorem") {
             out.push_back(std::make_unique<LTheorem>(parse_theorem(elab.at(i))));
             log("Parsed "+out.back()->to_string(), LogLevel::DEBUG);
         } else {
-            log("Declaration of type "+kind_to_string(node(decl, 1).at("kind"))+" is not supported, skipping", LogLevel::WARNING);
+            log("Declaration of type "+decl+" is not supported, skipping", LogLevel::WARNING);
             continue;
         }
     };
@@ -82,9 +84,11 @@ LTheorem parse_theorem(const json& elab) {
     // proofName1 has a type that includes global variables; the other one doesn't.
 
     std::string name = at(child(elab, -1), "info", "term", "value");
-    std::unique_ptr<LExpr> type = parse_expr(at(child(elab, -2), "info", "term", "typeExpr"));
+    std::unique_ptr<LExpr> type = nullptr;
+    std::unique_ptr<LProof> proof = nullptr;
 
-    // In some cases there are more terms between proof and proofName. We keep checking to find it.
+    // The first step is to check if we are in term mode
+    // Figure out which part of the elaboration contains the proof
     int i = -3;
     while (i + (int)elab.at("children").size() >= 0) {
         try {
@@ -95,12 +99,18 @@ LTheorem parse_theorem(const json& elab) {
         }
     }
     const json& proof_decl = child(child(elab, i), 0);
-    std::unique_ptr<LProof> proof = nullptr;
     if (proof_decl.at("info").contains("term")) {
-        proof = std::make_unique<LTermProof>(parse_expr(at(proof_decl, "info", "term", "valueExpr")));
+        // Create the AST of the proof after elaboration
+        std::string proof_elab = "theorem temp : " + (std::string)at(child(elab, -2), "info", "term", "type") 
+          + " := " + (std::string)at(proof_decl, "info", "term", "value");
+
+        json ast = node(LOADER.get_ast(proof_elab), 1);
+        type = parse_expr(node(node(node(ast, 2), 1), 1));
+        proof = std::make_unique<LTermProof>(parse_expr(node(node(ast, 3), 1)));
     } else {
         log("Only term proofs are supported, skipping theorem " + name, LogLevel::WARNING);
     }
+
     return LTheorem{name, std::move(type), std::move(proof)};
 }
 
@@ -176,6 +186,9 @@ std::unique_ptr<LExpr> parse_expr(const json& ast) {
             return std::make_unique<LForAll>(std::move(params), std::move(body));
         } else if (expr_kind == json::array({"Lean", "Parser", "Term", "fun"})) {
             // Fun AST is of the form ["fun", basicFun]
+            return parse_expr(node(ast, 1));
+        } else if (expr_kind == json::array({"Lean", "Parser", "Term", "paren"})) {
+            // Parenthesis AST is of the form ["(", obj, ")"]
             return parse_expr(node(ast, 1));
         } 
         log("Unsupported expression kind " + kind_to_string(expr_kind), LogLevel::WARNING);

@@ -9,6 +9,8 @@
 #include "utility/misc.hpp"
 #include "lean_to_ir.hpp"
 
+Loader LOADER;
+
 // Used to handle code path. This function is unique in that
 // argp points to the argument itself rather than the flag.
 void handle_code_path(int& argp, int argc, char** argv, Loader& l) {
@@ -154,6 +156,7 @@ bool Loader::initialize() {
     }
     // Create the working directories
     std::filesystem::create_directories(get_option("WorkingDir")+"/jixia");
+    std::filesystem::create_directories(get_option("WorkingDir")+"/temp");
     return true;
 }
 
@@ -188,6 +191,32 @@ void Loader::run_jixia() {
             << " -e " << get_option("WorkingDir") << "/jixia/" << code_name << ".elab.json"
             << " -i " << get_option("CodePath");
     std::system(command.str().c_str());
+}
+
+// Use Jixia to extract the AST of a Lean string.
+json Loader::get_ast(const std::string& data) {
+    // Write the data to a temporary file
+    std::string temp_path = get_option("WorkingDir") + "/temp/Temp.lean";
+    std::ofstream temp_file(temp_path);
+    if (!temp_file.is_open()) {
+        throw std::runtime_error("Failed to open temporary file for writing Lean code: " + temp_path);
+    }
+    temp_file << data;
+    temp_file.close();
+    // Run Jixia on the temporary file
+    std::ostringstream command;
+    command << "lake env " << get_option("Jixia")
+            << " -a " << get_option("WorkingDir") << "/temp/Temp.ast.json"
+            << " -i " << temp_path;
+    // Suppress output, as there are often warnings we want to ignore
+    #if (defined(WIN32) || defined(_WIN32) || defined(__WIN32)) && !defined(__CYGWIN__)
+    command << " > NUL";
+    #else
+    command << " 1>/dev/null 2>/dev/null";
+    #endif
+    std::system(command.str().c_str());
+    // Load and return the elaboration JSON
+    return get_json(get_option("WorkingDir") + "/temp/Temp.ast.json").at(0).at("node");
 }
 
 // Runs all conversions steps to get from Lean to LaTeX

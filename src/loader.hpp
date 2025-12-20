@@ -3,6 +3,8 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
+#include "utility/json.hpp"
+using json = nlohmann::json;
 
 class Loader;
 
@@ -21,6 +23,7 @@ public:
     Loader();
     bool initialize();
     void run_jixia();
+    json get_ast(const std::string& data);
     void convert();
     std::string get_option(const std::string& option);
     void load_ini();
@@ -28,3 +31,6 @@ public:
     bool is_tampered(const std::string& option);
     void parse_argument(int& argp, int argc, char** argv);
 };
+
+// Global loader instance
+extern Loader LOADER;
