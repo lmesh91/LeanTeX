@@ -71,3 +71,17 @@ void set_log_level(LogLevel level);
 
 // Strips leading and trailing whitespace from a string
 std::string strip(const std::string& str);
+
+// Downcast to a unique pointer, destroying the base pointer if successful
+template <typename Derived, typename Base>
+std::unique_ptr<Derived> downcast_unique(std::unique_ptr<Base>& base_ptr) {
+    if (!base_ptr) {
+        return nullptr;
+    }
+    Derived* derived_ptr = dynamic_cast<Derived*>(base_ptr.get());
+    if (!derived_ptr) {
+        throw std::runtime_error("downcast_unique failed: invalid cast");
+    }
+    base_ptr.release(); // Release ownership from base_ptr
+    return std::unique_ptr<Derived>(derived_ptr); // Transfer ownership to Derived unique_ptr
+}
