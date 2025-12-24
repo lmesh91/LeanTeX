@@ -10,10 +10,24 @@ std::string kind_to_string(const json& kind) {
         std::string out;
         for (size_t i = 0; i < kind.size(); i++) {
             if (i > 0) out += ".";
-            out += kind.at(i).get<std::string>();
+            const json& k = kind.at(i);
+            if (k.is_string()) {
+                out += k.get<std::string>();
+            } else if (k.is_number_integer()) {
+                out += std::to_string(k.get<long long>());
+            } else if (k.is_number_unsigned()) {
+                out += std::to_string(k.get<unsigned long long>());
+            } else if (k.is_number_float()) {
+                out += std::to_string(k.get<double>());
+            } else {
+                // Fallback: dump the JSON (e.g. objects), should be rare.
+                out += k.dump();
+            }
         }
         return out;
     } else {
+        log("kind_to_string received invalid kind JSON type", LogLevel::ERROR);
+        log("JSON: " + kind.dump(), LogLevel::DEBUG);
         return "<unknown kind>";
     }
 }
@@ -76,6 +90,20 @@ inline const json& at(const json& j) {
     return j;
 }
 
+LBinder::Info binder_info_of(const std::string& info_str) {
+    if (info_str == "default") {
+        return LBinder::Info::Explicit;
+    } else if (info_str == "implicit") {
+        return LBinder::Info::Implicit;
+    } else if (info_str == "strict_implicit") {
+        return LBinder::Info::StrictImplicit;
+    } else if (info_str == "inst_implicit") {
+        return LBinder::Info::InstImplicit;
+    } else {
+        log("Unknown binder info '"+info_str+"', defaulting to explicit", LogLevel::WARNING);
+        return LBinder::Info::Explicit;
+    }
+}
 
 std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
     std::vector<std::unique_ptr<LExpr>> out;
@@ -91,7 +119,7 @@ std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
         // The first argument is declaration modifiers. This may be used
         // to parse custom attributes in the future, but for now it is ignored.
         if (decl == "theorem") {
-            out.push_back(std::make_unique<LTheorem>(parse_theorem(elab.at(i))));
+            out.push_back(parse_theorem(elab.at(i)));
             log("Parsed "+out.back()->to_string(), LogLevel::DEBUG);
         } else {
             log("Declaration of type "+decl+" is not supported, skipping", LogLevel::WARNING);
@@ -101,7 +129,7 @@ std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
     return out;
 }
 
-LTheorem parse_theorem(const json& elab) {
+std::unique_ptr<LTheorem> parse_theorem(const json& elab) {
     // The elaboration for theorem *appears* to be of the form:
     // [param1Type, param1, ..., proofType, param1, ..., proof, proofName1, proofName2]
     // where global variables only appear in the first parameter list.
@@ -119,25 +147,32 @@ LTheorem parse_theorem(const json& elab) {
     while (true) {
         // When we finish the parameter list, the elaborations will be [proofType, param1 OR proof]
         // If it is param1, then the reference will be before the last parameter's reference
-        if (n_params > 0) {
-            int pOld_ref = at(child(elab, 2*n_params-1), "ref", "range", 0);
-            int pNew_ref = at(child(elab, 2*n_params+1), "ref", "range", 0);
-            if (pOld_ref >= pNew_ref) {
+        try {
+            if (n_params > 0) {
+                int pOld_ref = at(child(elab, 2*n_params-1), "ref", "range", 0);
+                int pNew_ref = at(child(elab, 2*n_params+1), "ref", "range", 0);
+                if (pOld_ref >= pNew_ref) {
+                    break;
+                }
+            }
+            // Otherwise, we will have reached the proof, which will not be a term
+            if (!child(elab, 2*n_params+1).at("info").contains("term")) {
                 break;
             }
-        }
-        // Otherwise, we will have reached the proof, which will not be a term
-        if (!child(elab, 2*n_params+1).at("info").contains("term")) {
+            n_params++;
+        } catch (std::exception& ex) {
+            // This could happen for valid reasons (e.g. a missing term in elaboration),
+            // and it also means that we are done parsing parameters.
             break;
-        }
-        n_params++;
+        };
     };
 
     // Parse each parameter and the proof type
     for (int i = 0; i < n_params; i++) {
         params.push_back(std::make_unique<LBinder>(
             at(child(elab, 2*i+1), "ref", "str"),
-            parse_expr(child(elab, 2*i))
+            parse_expr(child(elab, 2*i)),
+            binder_info_of(at(child(elab, 2*i+1), "info", "term", "context", 0, "binderInfo"))
         ));
     };
     type = parse_expr(child(elab, 2*n_params));
@@ -160,9 +195,110 @@ LTheorem parse_theorem(const json& elab) {
         log("Only term proofs are supported, skipping theorem " + name, LogLevel::WARNING);
     }
 
-    return LTheorem{name, std::move(params), std::move(type), std::move(proof)};
+    return std::make_unique<LTheorem>(name, std::move(params), std::move(type), std::move(proof));
 }
 
-std::unique_ptr<LExpr> parse_expr(const json& elab) {
-    return nullptr;
+// Parses a Lean Expr object.
+// todo: solve variables
+std::unique_ptr<LExpr> parse_expr(const json& expr) {
+    // Check if we are in the elaboration tree
+    if (expr.contains("info") && expr.at("info").contains("term")) {
+        // By default, we parse the value of the expression rather than the type
+        return parse_expr(at(expr, "info", "term", "valueExpr"));
+    }
+    if (!expr.contains("expr")) {
+        log("Expression does not contain 'expr' field, cannot parse", LogLevel::WARNING);
+        log("Expression JSON:\n"+expr.dump(), LogLevel::DEBUG);
+        return nullptr;
+    }
+    std::string type = expr.at("expr");
+    // Note: metadata nodes are skipped in Jixia, so we do not have to handle it.
+    if (type == "bvar") {
+        return std::make_unique<LVar>(expr.at("deBrujinIndex"));
+    } else if (type == "fvar") {
+        return std::make_unique<LVar>(LVar::Type::Free, kind_to_string(expr.at("id")));
+    } else if (type == "mvar") { // Note: There shouldn't be any metavariables after elaboration
+        return std::make_unique<LVar>(LVar::Type::Meta, kind_to_string(expr.at("id")));
+    } else if (type == "sort") {
+        return std::make_unique<LSort>(parse_level(expr.at("level")));
+    } else if (type == "const") {
+        std::vector<std::unique_ptr<LLevel>> levels = {};
+        for (const auto& lvl : expr.at("levels")) {
+            levels.push_back(parse_level(lvl));
+        }
+        return std::make_unique<LConst>(kind_to_string(expr.at("name")), std::move(levels));
+    } else if (type == "app") {
+        std::unique_ptr<LExpr> fn = parse_expr(expr.at("fn"));
+        std::unique_ptr<LExpr> arg = parse_expr(expr.at("arg"));
+        return std::make_unique<LApp>(std::move(fn), std::move(arg));
+    } else if (type == "lam") {
+        std::unique_ptr<LBinder> binder = std::make_unique<LBinder>(
+            kind_to_string(expr.at("name")),
+            parse_expr(expr.at("binderType")),
+            binder_info_of(expr.at("binderInfo"))
+        );
+        std::unique_ptr<LExpr> body = parse_expr(expr.at("body"));
+        return std::make_unique<LLambda>(std::move(binder), std::move(body));
+    } else if (type == "forallE") {
+        std::unique_ptr<LBinder> binder = std::make_unique<LBinder>(
+            kind_to_string(expr.at("name")),
+            parse_expr(expr.at("binderType")),
+            binder_info_of(expr.at("binderInfo"))
+        );
+        std::unique_ptr<LExpr> body = parse_expr(expr.at("body"));
+        return std::make_unique<LForAll>(std::move(binder), std::move(body));
+    } else if (type == "letE") {
+        return std::unique_ptr<LLet>(new LLet(
+            kind_to_string(expr.at("name")),
+            parse_expr(expr.at("type")),
+            parse_expr(expr.at("value")),
+            parse_expr(expr.at("body")),
+            expr.at("nondep")
+        ));
+    } else if (type == "lit") {
+        if (expr.at("value").contains("natVal")) {
+            return std::make_unique<LLiteral>((unsigned int)at(expr, "value", "natVal", "val"));
+        } else if (expr.at("value").contains("strVal")) {
+            return std::make_unique<LLiteral>((std::string)at(expr, "value", "strVal", "val"));
+        } else {
+            log("Unknown literal type in 'lit' expression, cannot parse", LogLevel::WARNING);
+            log("Expression JSON:\n"+expr.dump(), LogLevel::DEBUG);
+            return nullptr;
+        }
+    } else if (type == "proj") {
+        return std::make_unique<LProj>(
+            kind_to_string(expr.at("name")),
+            expr.at("idx"),
+            parse_expr(expr.at("struct"))
+        );
+    } else {
+        log("Unknown expression type '"+type+"', cannot parse", LogLevel::WARNING);
+        return nullptr;
+    }
 };
+
+std::unique_ptr<LLevel> parse_level(const json& level) {
+    if (level == "zero") {
+        return std::make_unique<LLevel>();
+    } else if (level.contains("succ")) {
+        return std::make_unique<LLevel>(LLevel::Type::Succ, parse_level(level.at("succ")));
+    } else if (level.contains("max")) {
+        return std::make_unique<LLevel>(LLevel::Type::Max,
+            parse_level(level.at("max").at(0)),
+            parse_level(level.at("max").at(1))
+        );
+    } else if (level.contains("imax")) {
+        return std::make_unique<LLevel>(LLevel::Type::IMax,
+            parse_level(level.at("imax").at(0)),
+            parse_level(level.at("imax").at(1))
+        );
+    } else if (level.contains("param")) {
+        return std::make_unique<LLevel>(LLevel::Type::Param, kind_to_string(level.at("param")));
+    } else if (level.contains("mvar")) {
+        return std::make_unique<LLevel>(LLevel::Type::Meta, kind_to_string(at(level, "mvar", "name")));
+    } else {
+        log("Unknown level type in JSON, cannot parse", LogLevel::WARNING);
+        log("Level JSON:\n"+level.dump(), LogLevel::DEBUG);
+        return nullptr;
+    }
+}

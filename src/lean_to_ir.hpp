@@ -9,6 +9,7 @@ std::string kind(const json& j);
 const json& node(const json& j, int n);
 json child(const json& j, int n);
 json child(std::string type, const json& j, int n);
+LBinder::Info binder_info_of(const std::string& info_str);
 
 // Takes in an arbitrary number of keys and traverses through the JSON object with them
 // This function itself is pretty messy but it makes the rest of the code much cleaner
@@ -53,5 +54,6 @@ const json& at(const json& j, Keys&&... keys) {
 std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab);
 
 // Parsers for individual syntax
-LTheorem parse_theorem(const json& elab);
-std::unique_ptr<LExpr> parse_expr(const json& elab);
+std::unique_ptr<LTheorem> parse_theorem(const json& elab);
+std::unique_ptr<LExpr> parse_expr(const json& expr);
+std::unique_ptr<LLevel> parse_level(const json& level);

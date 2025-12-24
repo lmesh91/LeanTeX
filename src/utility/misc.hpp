@@ -80,7 +80,7 @@ std::unique_ptr<Derived> downcast_unique(std::unique_ptr<Base>& base_ptr) {
     }
     Derived* derived_ptr = dynamic_cast<Derived*>(base_ptr.get());
     if (!derived_ptr) {
-        throw std::runtime_error("downcast_unique failed: invalid cast");
+        return nullptr;
     }
     base_ptr.release(); // Release ownership from base_ptr
     return std::unique_ptr<Derived>(derived_ptr); // Transfer ownership to Derived unique_ptr

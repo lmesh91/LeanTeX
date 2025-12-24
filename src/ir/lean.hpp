@@ -18,9 +18,9 @@ It is very similar to Lean 4's Expr class, with some notable differences:
 - Binders, which consist of a name and a type, are their own type of Expr.
 */
 struct LExpr {
-    // The purpose of saving this parent expression is to improve
-    // traversal of the tree when needed, e.g. for solving bound variables.
-    std::unique_ptr<LExpr> parent;
+    // Non-owning pointer to parent expression to improve traversal of the tree
+    // (children must not take ownership of their parents).
+    LExpr *parent = nullptr;
 
     virtual ~LExpr() = default;
 
@@ -79,6 +79,7 @@ struct LVar : public LExpr {
             case Type::Meta:
                 return json{{"kind", "mvar"}, {"name", name}};
         }
+        return json{};
     }
     std::string to_string() const noexcept override {
         if (solved) {
@@ -92,6 +93,7 @@ struct LVar : public LExpr {
             case Type::Meta:
                 return "?m." + name;
         }
+        return "?unknown";
     }
 };
 
@@ -156,6 +158,7 @@ struct LLevel {
             case Type::Meta:
                 return {0, {name}};
         }
+        return {0, {}};
     }
 
     json to_json() const {
@@ -183,9 +186,6 @@ struct LLevel {
             return std::to_string(lvl);
         } else {
             for (const auto& name : names) {
-                if (!out.empty()) {
-                    out += " ";
-                }
                 out += name + "+";
             }
             if (lvl > 0) {
@@ -283,32 +283,24 @@ struct LApp : public LExpr {
     std::unique_ptr<LExpr> fn;
     std::vector<std::unique_ptr<LExpr>> args;
 
-    LApp(std::unique_ptr<LExpr> fn, std::vector<std::unique_ptr<LExpr>> args) {
-        // Check for nullptr
-        if (!fn) {
-            throw std::runtime_error("LApp constructor received null function");
-        }
-        for (const auto& arg : args) {
-            if (!arg) {
-                throw std::runtime_error("LApp constructor received null argument");
-            }
-        }
+    LApp(std::unique_ptr<LExpr> fn, std::unique_ptr<LExpr> arg) {
         // Nest LApp functions to flatten applications
-        std::unique_ptr<LApp> fn_app = downcast_unique<LApp>(fn);
+        std::unique_ptr<LApp> fn_app = fn == nullptr ? nullptr : downcast_unique<LApp>(fn);
         if (fn_app) {
             this->fn = std::move(fn_app->fn);
             this->args = std::move(fn_app->args);
-            for (auto& arg : args) {
-                this->args.push_back(std::move(arg));
-            }
         } else {
             this->fn = std::move(fn);
-            this->args = std::move(args);
         }
-        // Set parent pointers
-        this->fn->parent = std::make_unique<LApp>(*this);
-        for (auto& arg : this->args) {
-            arg->parent = std::make_unique<LApp>(*this);
+        this->args.push_back(std::move(arg));
+        // Set parent pointers (non-owning)
+        if (this->fn) {
+            this->fn->parent = this;
+        }
+        for (const auto& arg : this->args) {
+            if (arg) {
+                arg->parent = this;
+            }
         }
     };
 
@@ -329,9 +321,9 @@ struct LApp : public LExpr {
     std::string to_string() const noexcept override {
         std::string out;
         if (fn) {
-            out += "(" + fn->to_string() + ")";
+            out += fn->to_string();
         } else {
-            out += "(?nullptr)";
+            out += "?nullptr";
         }
         for (const auto& arg : args) {
             out += " ";
@@ -356,20 +348,17 @@ struct LBinder : public LExpr {
         Explicit,
         Implicit,
         StrictImplicit,
-        InstImplicit,
-        Let
+        InstImplicit
     };
     std::string name;
     std::unique_ptr<LExpr> type;
     Info info;
     LBinder(std::string name, std::unique_ptr<LExpr> type, Info info) : name(std::move(name)), info(info) {
-        // Check for nullptr
-        if (!type) {
-            throw std::runtime_error("LBinder constructor received null type");
-        };
         // Set pointers
-        this->type = std::move(type);
-        this->type->parent = std::make_unique<LBinder>(*this);
+        if (type) {
+            this->type = std::move(type);
+            this->type->parent = this;
+        };
     };
 
     json to_json() const override {
@@ -395,19 +384,40 @@ struct LBinder : public LExpr {
     }
 
     std::string to_string() const noexcept override {
+        std::string _name = name;
+        // If the name ends with a dot followed by one or more digits (e.g. "x._@._internal._hyg.7"),
+        // treat it as inaccessible and replace with the user-friendly version "x✝.7".
+        // Note that Lean 4 uses superscript numbers instead of the dot.
+        auto pos = _name.rfind('.');
+        if (pos != std::string::npos && pos + 1 < _name.size()) {
+            bool all_digits = true;
+            for (size_t i = pos + 1; i < _name.size(); ++i) {
+                if (!std::isdigit(static_cast<unsigned char>(_name[i]))) {
+                    all_digits = false;
+                    break;
+                }
+            }
+            if (all_digits) {
+                _name = _name.substr(0, _name.find('.')) + "✝";
+                if (pos != name.size() - 2 || _name[name.size() - 1] != '0') {
+                    _name += name.substr(pos);
+                }
+            }
+        }
+
         std::string out;
         switch (info) {
             case Info::Explicit:
-                out += "(" + name + " : ";
+                out += "(" + _name + " : ";
                 break;
             case Info::Implicit:
-                out += "{" + name + " : ";
+                out += "{" + _name + " : ";
                 break;
             case Info::StrictImplicit:
                 out += "{{" + name + " : ";
                 break;
             case Info::InstImplicit:
-                out += "[" + name + " : ";
+                out += "[" + _name + " : ";
                 break;
         }
         if (type) {
@@ -442,33 +452,26 @@ struct LLambda : public LExpr {
     std::vector<std::unique_ptr<LBinder>> binders;
     std::unique_ptr<LExpr> body;
 
-    LLambda(std::vector<std::unique_ptr<LBinder>> binders, std::unique_ptr<LExpr> body) {
-        // Check for nullptr
-        if (!body) {
-            throw std::runtime_error("LLambda constructor received null body");
-        }
-        for (const auto& binder : binders) {
-            if (!binder) {
-                throw std::runtime_error("LLambda constructor received null binder");
-            }
-        }
-        // Nest LLambda to flatten applications
-        std::unique_ptr<LLambda> body_lm = downcast_unique<LLambda>(body);
+    LLambda(std::unique_ptr<LBinder> binder, std::unique_ptr<LExpr> body) {
+        std::unique_ptr<LLambda> body_lm = body == nullptr ? nullptr : downcast_unique<LLambda>(body);
         if (body_lm) {
             this->body = std::move(body_lm->body);
+            this->binders.push_back(std::move(binder));
             // Place the incoming binders before the binders from the nested lambda
-            this->binders = std::move(binders);
-            for (auto& binder : body_lm->binders) {
-                this->binders.push_back(std::move(binder));
+            for (auto& b : body_lm->binders) {
+                this->binders.push_back(std::move(b));
             }
         } else {
             this->body = std::move(body);
-            this->binders = std::move(binders);
+            this->binders.push_back(std::move(binder));
         }
-        // Set parent pointers
-        this->body->parent = std::make_unique<LLambda>(*this);
-        for (auto& binder : this->binders) {
-            binder->parent = std::make_unique<LLambda>(*this);
+        if (this->body) {
+            this->body->parent = this;
+        }
+        for (const auto& binder : this->binders) {
+            if (binder) {
+                binder->parent = this;
+            }
         }
     };
 
@@ -511,33 +514,27 @@ struct LForAll : public LExpr {
     std::vector<std::unique_ptr<LBinder>> binders;
     std::unique_ptr<LExpr> body;
 
-    LForAll(std::vector<std::unique_ptr<LBinder>> binders, std::unique_ptr<LExpr> body) {
-        // Check for nullptr
-        if (!body) {
-            throw std::runtime_error("LForAll constructor received null body");
-        }
-        for (const auto& binder : binders) {
-            if (!binder) {
-                throw std::runtime_error("LForAll constructor received null binder");
-            }
-        }
-        // Nest LForAll to flatten applications
-        std::unique_ptr<LForAll> body_lm = downcast_unique<LForAll>(body);
-        if (body_lm) {
-            this->body = std::move(body_lm->body);
-            // Place the incoming binders before the binders from the nested lambda
-            this->binders = std::move(binders);
-            for (auto& binder : body_lm->binders) {
+    LForAll(std::unique_ptr<LBinder> binder, std::unique_ptr<LExpr> body) {
+        std::unique_ptr<LForAll> body_fa = body == nullptr ? nullptr : downcast_unique<LForAll>(body);
+        if (body_fa) {
+            this->body = std::move(body_fa->body);
+            // Place the incoming binders before the binders from the nested forall
+            this->binders.push_back(std::move(binder));
+            for (auto& binder : body_fa->binders) {
                 this->binders.push_back(std::move(binder));
             }
         } else {
             this->body = std::move(body);
-            this->binders = std::move(binders);
+            this->binders.push_back(std::move(binder));
         }
-        // Set parent pointers
-        this->body->parent = std::make_unique<LForAll>(*this);
+        // Set parent pointers (non-owning)
+        if (this->body) {
+            this->body->parent = this;
+        };
         for (auto& binder : this->binders) {
-            binder->parent = std::make_unique<LForAll>(*this);
+            if (binder) {
+                binder->parent = this;
+            };
         }
     };
 
@@ -583,23 +580,19 @@ struct LLet : public LExpr {
     bool nondep; // true for `have`, false for `let`; only used by to_string
 
     LLet(std::string name, std::unique_ptr<LExpr> type, std::unique_ptr<LExpr> value, std::unique_ptr<LExpr> body, bool nondep) : name(std::move(name)), nondep(nondep) {
-        // Check for nullptr
-        if (!type) {
-            throw std::runtime_error("LLet constructor received null type");
-        }
-        if (!value) {
-            throw std::runtime_error("LLet constructor received null value");
-        }
-        if (!body) {
-            throw std::runtime_error("LLet constructor received null body");
-        }
         // Set pointers
-        this->type = std::move(type);
-        this->value = std::move(value);
-        this->body = std::move(body);
-        this->type->parent = std::make_unique<LLet>(*this);
-        this->value->parent = std::make_unique<LLet>(*this);
-        this->body->parent = std::make_unique<LLet>(*this);
+        if (type) {
+            this->type = std::move(type);
+            this->type->parent = this;
+        }
+        if (value) {
+            this->value = std::move(value);
+            this->value->parent = this;
+        }
+        if (body) {
+            this->body = std::move(body);
+            this->body->parent = this;
+        }
     };
 
     json to_json() const override {
@@ -664,6 +657,7 @@ struct LLiteral : public LExpr {
             case Type::Nat:
                 return json{{"kind", "literal"}, {"type", "nat"}, {"value", nat_value}};
         }
+        return json{};
     }
 
     std::string to_string() const noexcept override {
@@ -673,6 +667,7 @@ struct LLiteral : public LExpr {
             case Type::Nat:
                 return std::to_string(nat_value);
         }
+        return "?unknown";
     }
 };
 
@@ -688,13 +683,11 @@ struct LProj : LExpr {
     std::unique_ptr<LExpr> structE;
 
     LProj(std::string name, unsigned int idx, std::unique_ptr<LExpr> structE) : name(std::move(name)), idx(idx) {
-        // Check for nullptr
-        if (!structE) {
-            throw std::runtime_error("LProj constructor received null struct");
-        }
         // Set pointers
-        this->structE = std::move(structE);
-        this->structE->parent = std::make_unique<LProj>(*this);
+        if (structE) {
+            this->structE = std::move(structE);
+            this->structE->parent = this;
+        }
     };
 
     json to_json() const override {
@@ -728,7 +721,9 @@ struct LTermProof : public LProof {
     std::unique_ptr<LExpr> expr;
 
     LTermProof(std::unique_ptr<LExpr> expr) : expr(std::move(expr)) {
-        expr->parent = std::make_unique<LTermProof>(*this);
+        if (expr) {
+            expr->parent = this;
+        }
     };
 
     json to_json() const override {
@@ -755,14 +750,14 @@ struct LTheorem : public LExpr {
 
     LTheorem(std::string name, std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> type, std::unique_ptr<LProof> proof) : name(std::move(name)), params(std::move(params)), type(std::move(type)), proof(std::move(proof)) {
         if (type) {
-            type->parent = std::make_unique<LTheorem>(*this);
+            type->parent = this;
         }
         if (proof) {
-            proof->parent = std::make_unique<LTheorem>(*this);
+            proof->parent = this;
         }
         for (auto& param : this->params) {
             if (param) {
-                param->parent = std::make_unique<LTheorem>(*this);
+                param->parent = this;
             }
         }
     };
@@ -788,7 +783,7 @@ struct LTheorem : public LExpr {
         std::string out = "theorem " + name + " ";
         for (const auto& param : params) {
             if (param) {
-                out += "(" + param->to_string() + ") ";
+                out += param->to_string() + " ";
             } else {
                 out += "(?nullptr) ";
             }
