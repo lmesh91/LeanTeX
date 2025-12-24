@@ -386,8 +386,7 @@ struct LBinder : public LExpr {
     std::string to_string() const noexcept override {
         std::string _name = name;
         // If the name ends with a dot followed by one or more digits (e.g. "x._@._internal._hyg.7"),
-        // treat it as inaccessible and replace with the user-friendly version "x✝.7".
-        // Note that Lean 4 uses superscript numbers instead of the dot.
+        // treat it as inaccessible and replace with the user-friendly version "x!7".
         auto pos = _name.rfind('.');
         if (pos != std::string::npos && pos + 1 < _name.size()) {
             bool all_digits = true;
@@ -398,10 +397,7 @@ struct LBinder : public LExpr {
                 }
             }
             if (all_digits) {
-                _name = _name.substr(0, _name.find('.')) + "✝";
-                if (pos != name.size() - 2 || _name[name.size() - 1] != '0') {
-                    _name += name.substr(pos);
-                }
+                _name = _name.substr(0, _name.find('.')) + "!" + _name.substr(pos+1);
             }
         }
 

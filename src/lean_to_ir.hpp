@@ -10,6 +10,8 @@ const json& node(const json& j, int n);
 json child(const json& j, int n);
 json child(std::string type, const json& j, int n);
 LBinder::Info binder_info_of(const std::string& info_str);
+void solve_variables(LExpr* expr, const json& ctx);
+void _solve_variables(LExpr* expr, const std::map<std::string, std::string>& free_names, std::vector<std::string> bound_names);
 
 // Takes in an arbitrary number of keys and traverses through the JSON object with them
 // This function itself is pretty messy but it makes the rest of the code much cleaner
