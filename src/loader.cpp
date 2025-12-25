@@ -190,6 +190,7 @@ void Loader::run_jixia() {
     command << "lake env " << get_option("Jixia")
             << " -e " << get_option("WorkingDir") << "/jixia/" << code_name << ".elab.json"
             << " -i " << get_option("CodePath");
+    log("Executing command: " + command.str(), LogLevel::DEBUG);
     std::system(command.str().c_str());
 }
 
