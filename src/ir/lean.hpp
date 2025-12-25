@@ -82,16 +82,32 @@ struct LVar : public LExpr {
         return json{};
     }
     std::string to_string() const noexcept override {
+        std::string _name = name;
+        // If the name ends with a dot followed by one or more digits (e.g. "x._@._internal._hyg.7"),
+        // treat it as inaccessible and replace with the user-friendly version "x!7".
+        auto pos = _name.rfind('.');
+        if (pos != std::string::npos && pos + 1 < _name.size()) {
+            bool all_digits = true;
+            for (size_t i = pos + 1; i < _name.size(); ++i) {
+                if (!std::isdigit(static_cast<unsigned char>(_name[i]))) {
+                    all_digits = false;
+                    break;
+                }
+            }
+            if (all_digits) {
+                _name = _name.substr(0, _name.find('.')) + "!" + _name.substr(pos+1);
+            }
+        }
         if (solved) {
-            return name;
+            return _name;
         }
         switch (type) {
             case Type::Bound:
                 return "?b." + std::to_string(index);
             case Type::Free:
-                return "?f." + name;
+                return "?f." + _name;
             case Type::Meta:
-                return "?m." + name;
+                return "?m." + _name;
         }
         return "?unknown";
     }
