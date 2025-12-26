@@ -582,7 +582,7 @@ struct LForAll : public LExpr {
 /*
 LLet represents `let` and `have` expressions in Lean. The only difference is that
 `let` expressions are only type-correct if the value is known.
-Unlike LForAll anad LLambda, LLet does not flatten nested lets/haves.
+Unlike LForAll and LLambda, LLet does not flatten nested lets/haves.
 */
 struct LLet : public LExpr {
     std::string name;
