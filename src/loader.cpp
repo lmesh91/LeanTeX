@@ -8,6 +8,7 @@
 #include "loader.hpp"
 #include "utility/misc.hpp"
 #include "lean_to_ir.hpp"
+#include "ir_to_latex.hpp"
 
 Loader LOADER;
 
@@ -230,4 +231,9 @@ void Loader::convert() {
     // Convert to Lean IR
     std::vector<std::unique_ptr<LExpr>> ir = lean_to_ir(elab_json);
     log("Converted Lean code to Lean IR with " + std::to_string(ir.size()) + " top-level expressions", LogLevel::DEBUG);
+}
+
+void Loader::write_latex() {
+    log("Converting Document IR to Latex");
+    ir_to_latex();
 }

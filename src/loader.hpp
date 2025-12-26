@@ -27,6 +27,7 @@ public:
     void convert();
     std::string get_option(const std::string& option);
     void load_ini();
+    void write_latex();
     void set_option(const std::string& option, const std::string& value) noexcept;
     bool is_tampered(const std::string& option);
     void parse_argument(int& argp, int argc, char** argv);

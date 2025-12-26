@@ -85,3 +85,4 @@ std::unique_ptr<Derived> downcast_unique(std::unique_ptr<Base>& base_ptr) {
     base_ptr.release(); // Release ownership from base_ptr
     return std::unique_ptr<Derived>(derived_ptr); // Transfer ownership to Derived unique_ptr
 }
+std::string latexify(const std::string& str); // converts text string to allowable LaTeX form; for now, turns _ into \_ and \ into \\
