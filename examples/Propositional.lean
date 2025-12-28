@@ -61,7 +61,6 @@ theorem dist_and_or : p ∧ (q ∨ r) ↔ (p ∧ q) ∨ (p ∧ r) :=
             (fun hpr : p ∧ r => And.intro hpr.left (Or.intro_right q hpr.right))
         )
     Iff.intro mp mpr
-
 theorem dist_or_and : p ∨ (q ∧ r) ↔ (p ∨ q) ∧ (p ∨ r) :=
     have mp :=
         (fun h : p ∨ (q ∧ r) => Or.elim h

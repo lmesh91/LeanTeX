@@ -12,7 +12,6 @@ int main(int argc, char* argv[]) {
         if (!LOADER.initialize()) return 0;
         LOADER.run_jixia();
         LOADER.convert();
-        LOADER.write_latex();
     } catch (std::exception& ex) {
         log(ex.what(), LogLevel::ERROR);
         return 1;

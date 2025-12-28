@@ -12,8 +12,7 @@ file(GLOB_RECURSE LEANTEX_SOURCES
 )
 
 add_executable(leantex ${LEANTEX_SOURCES}
-		src/ir_to_latex.cpp
-		src/ir_to_latex.hpp)
+		src/ir/latex.hpp)
 
 # Ensure the src directory is available for headers like "loader.hpp"
 target_include_directories(leantex PRIVATE ${CMAKE_SOURCE_DIR}/src)
