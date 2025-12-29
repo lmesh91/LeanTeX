@@ -1,6 +1,7 @@
 // utility/misc.cpp - Utility functions
 #include "utility/misc.hpp"
 #include <sstream>
+#include <fstream>
 #include <iostream>
 
 // Returns just the name of a file
@@ -8,7 +9,18 @@
 std::string get_filename(const std::string& file) {
     // Windows paths also treat \ as a slash, while Linux paths only use /
     #if (defined(WIN32) || defined(_WIN32) || defined(__WIN32)) && !defined(__CYGWIN__)
-    size_t slash_pos = file.find_last_of('/\\');
+    size_t fw_slash_pos = file.rfind('/');
+    size_t bw_slash_pos = file.rfind('\\');
+    if (fw_slash_pos == std::string::npos) {
+        fw_slash_pos = 0;
+    }
+    if (bw_slash_pos == std::string::npos) {
+        bw_slash_pos = 0;
+    }
+    size_t slash_pos = std::max(fw_slash_pos, bw_slash_pos);
+    if (slash_pos == 0) {
+        slash_pos = std::string::npos;
+    }
     #else
     size_t slash_pos = file.rfind('/');
     #endif
@@ -19,6 +31,17 @@ std::string get_filename(const std::string& file) {
     } else {
         return file.substr(name_start, dot_pos-name_start);
     }
+}
+
+// Gets JSON of a file
+json get_json(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        throw std::runtime_error("Could not open JSON file: " + path);
+    }
+    json j;
+    file >> j;
+    return j;
 }
 
 // Throws an error if there are not enough arguments to handle a command line flag.

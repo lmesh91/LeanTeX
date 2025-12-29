@@ -3,9 +3,13 @@
 #include <string>
 #include <iostream>
 #include <unordered_map>
+#include "utility/json.hpp"
+using json = nlohmann::json;
 
 // Returns just the name of a file
 std::string get_filename(const std::string& file);
+
+json get_json(const std::string& path);
 
 // Throws an error if there are not enough arguments to handle a command line flag.
 void ensure_args(int argp, int argc, char** argv, int count);
@@ -67,3 +71,17 @@ void set_log_level(LogLevel level);
 
 // Strips leading and trailing whitespace from a string
 std::string strip(const std::string& str);
+
+// Downcast to a unique pointer, destroying the base pointer if successful
+template <typename Derived, typename Base>
+std::unique_ptr<Derived> downcast_unique(std::unique_ptr<Base>& base_ptr) {
+    if (!base_ptr) {
+        return nullptr;
+    }
+    Derived* derived_ptr = dynamic_cast<Derived*>(base_ptr.get());
+    if (!derived_ptr) {
+        return nullptr;
+    }
+    base_ptr.release(); // Release ownership from base_ptr
+    return std::unique_ptr<Derived>(derived_ptr); // Transfer ownership to Derived unique_ptr
+}
