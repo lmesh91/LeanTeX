@@ -129,7 +129,7 @@ void _solve_variables(LExpr* expr, const std::map<std::string, std::string>& fre
                 log("Free variable '"+var->name+"' not found in context, cannot solve", LogLevel::WARNING);
             }
         } else if (var->type == LVar::Type::Bound) {
-            // De Brujin indices count from the innermost binder outwards
+            // De Bruijn indices count from the innermost binder outwards
             if (var->index < bound_names.size()) {
                 var->solve(bound_names[bound_names.size() - 1 - var->index]);
             } else {
@@ -285,7 +285,7 @@ std::unique_ptr<LExpr> parse_expr(const json& expr) {
     std::string type = expr.at("expr");
     // Note: metadata nodes are skipped in Jixia, so we do not have to handle it.
     if (type == "bvar") {
-        return std::make_unique<LVar>(expr.at("deBrujinIndex"));
+        return std::make_unique<LVar>(expr.at("deBruijnIndex"));
     } else if (type == "fvar") {
         return std::make_unique<LVar>(LVar::Type::Free, kind_to_string(expr.at("id")));
     } else if (type == "mvar") { // Note: There shouldn't be any metavariables after elaboration

@@ -426,7 +426,7 @@ struct LBinder : public LExpr {
                 out += "{" + _name + " : ";
                 break;
             case Info::StrictImplicit:
-                out += "{{" + name + " : ";
+                out += "{{" + _name + " : ";
                 break;
             case Info::InstImplicit:
                 out += "[" + _name + " : ";
@@ -761,11 +761,11 @@ struct LTheorem : public LExpr {
     std::unique_ptr<LProof> proof;
 
     LTheorem(std::string name, std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> type, std::unique_ptr<LProof> proof) : name(std::move(name)), params(std::move(params)), type(std::move(type)), proof(std::move(proof)) {
-        if (type) {
-            type->parent = this;
+        if (this->type) {
+            this->type->parent = this;
         }
-        if (proof) {
-            proof->parent = this;
+        if (this->proof) {
+            this->proof->parent = this;
         }
         for (auto& param : this->params) {
             if (param) {

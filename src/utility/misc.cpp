@@ -42,7 +42,7 @@ json get_json(const std::string& path) {
     json j;
     file >> j;
     return j;
-};
+}
 
 // Throws an error if there are not enough arguments to handle a command line flag.
 void ensure_args(int argp, int argc, char** argv, int count) {
