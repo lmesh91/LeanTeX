@@ -8,6 +8,7 @@
 #include "loader.hpp"
 #include "utility/misc.hpp"
 #include "lean_to_ir.hpp"
+#include "ir/latex.hpp"
 
 Loader LOADER;
 
