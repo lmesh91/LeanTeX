@@ -1,8 +1,4 @@
 // ir/latex.hpp - Latex IR representation
-/*
- * This representation as an AST is very similar to the Lean IR
- * And is in fact even more similar to lean's "tactic" mode
- */
 #pragma once
 #include "utility/json.hpp"
 #include "utility/misc.hpp"
@@ -13,16 +9,25 @@
 #include "ir/lean.hpp"
 
 /*
-THave represents `have` expressions in Latex IR.
+TExpr is a base class for Latex IR expressions.
+It inherits basic functionality from LExpr (and includes some LExpr types as sub-expressions).
+However, it is designed to be closer to Lean's "tactic mode", which builds up
+a proof expression in a way that is similar to a written proof.
+*/
+struct TExpr : public LExpr {};
+
+/*
+THave is similar to the `have` tactic in Lean,
+and also represents `have` or `let` statements from term mode.
 THave does not flatten nested lets/haves.
 */
-struct THave : public LExpr {
+struct THave : public TExpr {
     std::string name;
     std::unique_ptr<LExpr> type;
-    std::unique_ptr<LExpr> value;
-    std::unique_ptr<LExpr> body;
+    std::unique_ptr<TExpr> value;
+    std::unique_ptr<TExpr> body;
 
-    THave(std::string name, std::unique_ptr<LExpr> type, std::unique_ptr<LExpr> value, std::unique_ptr<LExpr> body) : name(std::move(name)) {
+    THave(std::string name, std::unique_ptr<LExpr> type, std::unique_ptr<TExpr> value, std::unique_ptr<TExpr> body) : name(std::move(name)) {
         // Set pointers
         if (type) {
             this->type = std::move(type);
@@ -40,15 +45,15 @@ struct THave : public LExpr {
 
     json to_json() const override {
         if (!type) {
-            throw std::runtime_error("LLet missing type");
+            throw std::runtime_error("THave missing type");
         }
         if (!value) {
-            throw std::runtime_error("LLet missing value");
+            throw std::runtime_error("THave missing value");
         }
         if (!body) {
-            throw std::runtime_error("LLet missing body");
+            throw std::runtime_error("THave missing body");
         }
-        return json{{"kind", "let"}, {"name", name}, {"type", type->to_json()}, {"value", value->to_json()}, {"body", body->to_json()}};
+        return json{{"kind", "have"}, {"name", name}, {"type", type->to_json()}, {"value", value->to_json()}, {"body", body->to_json()}};
     }
 
     std::string to_string() const noexcept override {
@@ -59,7 +64,7 @@ struct THave : public LExpr {
         } else {
             out += "?nullptr";
         }
-        out += " := ";
+        out += " := by ";
         if (value) {
             out += "(" + value->to_string() + ")";
         } else {
@@ -74,16 +79,24 @@ struct THave : public LExpr {
         return out;
     }
 };
+
 /*
- * TIntro - A representation of an "intro" statement - simply intro attached to one or more TBinders
- */
-struct TIntro : public LExpr {
+TIntro is similar to the `intro` tactic in Lean,
+representing the introduction of one or more binders.
+It is similar to lambda expressions in term mode.
+*/
+struct TIntro : public TExpr {
     std::vector<std::unique_ptr<LBinder>> params;
-    TIntro(std::vector<std::unique_ptr<LBinder>> params) : params(std::move(params)) {
+    std::unique_ptr<TExpr> body;
+    TIntro(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<TExpr> body) : params(std::move(params)), body(std::move(body)) {
         for (auto& param : this->params) {
             if (param) {
                 param->parent = this; // the intro statement has the names from and ownership of the binders
             }
+        }
+        if (body) {
+            this->body = std::move(body);
+            this->body->parent = this;
         }
     };
     json to_json() const override {
@@ -94,7 +107,10 @@ struct TIntro : public LExpr {
             }
             jparams.push_back(param->to_json());
         }
-        return json{{"kind", "intro"}, {"params", jparams}};
+        if (!body) {
+            throw std::runtime_error("TIntro missing body");
+        }
+        return json{{"kind", "intro"}, {"params", jparams}, {"body", body->to_json()}};
     };
     std::string to_string() const noexcept override {
         std::string out = "intro ";
@@ -105,120 +121,115 @@ struct TIntro : public LExpr {
                 out += "(?nullptr) ";
             }
         }
-        return out;
-    }
-};
-
-/*
- * TGoal - A representation of a "goal" statement - a goal attached to one or more binders
- * and a series of statements that proves the goal
- */
-
-struct TGoal : public LExpr {
-    std::vector<std::unique_ptr<LBinder>> params;
-    std::vector<std::unique_ptr<LExpr>> statements;
-    TGoal(std::vector<std::unique_ptr<LBinder>> params, std::vector<std::unique_ptr<LExpr>> statements) : params(std::move(params)), statements(std::move(statements)) {
-        for (auto& param : this->params) {
-            if (param) {
-                param->parent = this; // the intro statement has the names from and ownership of the binders
-            }
-        }
-        for (auto& statement : this->statements) {
-            if (statement) {
-                statement->parent = this; // the intro statement has the names from and ownership of the binders
-            }
-        }
-    };
-    json to_json() const override {
-        json jparams = json::array();
-        for (const auto& param : params) {
-            if (!param) {
-                throw std::runtime_error("TGoal statement has null parameter");
-            }
-            jparams.push_back(param->to_json());
-        }
-        json jstatements = json::array();
-        for (const auto& statement : statements) {
-            if (!statement) {
-                throw std::runtime_error("TGoal statement has null parameter");
-            }
-            jstatements.push_back(statement->to_json());
-        }
-        return json{{"kind", "goal"}, {"params", jparams}, {"statements", jstatements}};
-    };
-    std::string to_string() const noexcept override {
-        std::string out = "goal ";
-        for (const auto& param : params) {
-            if (param) {
-                out += param->to_string() + " ";
-            } else {
-                out += "(?nullptr) ";
-            }
-        }
-        out += "\n";
-        for (const auto& statement : statements) {
-            if (statement) {
-                out += statement->to_string() + "\n";
-            } else {
-                out += "(?nullptr) ";
-            }
+        out += "; ";
+        if (body) {
+            out += body->to_string();
+        } else {
+            out += "(?nullptr)";
         }
         return out;
     }
 };
 
 /*
- * TApply statements are actually a wrapper for a function application!
- */
-struct TApply : public LExpr {
-    std::unique_ptr<LApp> fn;
-    TApply(std::unique_ptr<LApp> fn) : fn(std::move(fn)) {
-        if (fn) {
-            fn->parent = this; // the intro statement has the names from and ownership of the binders
+TGoal represents solving for a single goal when there are multiple goals.
+It explicitly names the goal using a binder. It is most similar to the `case` tactic in Lean.
+*/
+struct TGoal : public TExpr {
+    std::unique_ptr<LBinder> param;
+    std::unique_ptr<TExpr> body;
+    TGoal(std::unique_ptr<LBinder> param, std::unique_ptr<TExpr> body) : param(std::move(param)), body(std::move(body)) {
+        if (this->param) {
+            this->param->parent = this;
+        }
+        if (this->body) {
+            this->body->parent = this;
         }
     };
     json to_json() const override {
-        json jparams = json::array();
-        if (!fn) {
-            throw std::runtime_error("TApply statement has null parameter");
+        if (!param) {
+            throw std::runtime_error("TGoal has null parameter");
         }
-        return json{{"kind", "apply"}, {"app", fn->to_json()}};
+        if (!body) {
+            throw std::runtime_error("TGoal missing body");
+        }
+        return json{{"kind", "goal"}, {"param", param->to_json()}, {"body", body->to_json()}};
     };
     std::string to_string() const noexcept override {
-        std::string out = "apply ";
-        if (fn) {
-            out += fn->to_string() + " ";
+        std::string out = "case ";
+        if (param) {
+            out += param->to_string() + " ";
         } else {
             out += "(?nullptr) ";
         }
+        out += "=> ";
+        if (body) {
+            out += body->to_string();
+        } else {
+            out += "(?nullptr)";
+        }
         return out;
     }
 };
 
 /*
- * TExact statements are identical to TApply statements, but are semantically different
- * as they are intended to represent statements that end right on variables/constants
- */
-struct TExact : public LExpr {
-    std::unique_ptr<LApp> fn;
-    TExact(std::unique_ptr<LApp> fn) : fn(std::move(fn)) {
-        if (fn) {
-            fn->parent = this; // the intro statement has the names from and ownership of the binders
+TApply is similar to the `apply` and `exact` tactics in Lean.
+It is represented as function application in term mode.
+The `exact` tactic can be represented as an application with only LExpr arguments
+(i.e. all arguments have already been solved).
+*/
+struct TApply : public TExpr {
+    std::unique_ptr<LExpr> fn;
+    std::vector<std::unique_ptr<LExpr>> args;
+
+    TApply(std::unique_ptr<LExpr> fn, std::vector<std::unique_ptr<LExpr>> args) : fn(std::move(fn)), args(std::move(args)) {
+        for (auto& arg : this->args) {
+            if (arg) {
+                arg->parent = this;
+            }
+        }
+        if (this->fn) {
+            this->fn->parent = this;
         }
     };
+
     json to_json() const override {
-        json jparams = json::array();
         if (!fn) {
-            throw std::runtime_error("TExact statement has null parameter");
+            throw std::runtime_error("TApply missing function");
         }
-        return json{{"kind", "exact"}, {"app", fn->to_json()}};
-    };
+        json jargs = json::array();
+        for (const auto& arg : args) {
+            if (!arg) {
+                throw std::runtime_error("TApply has null argument");
+            }
+            jargs.push_back(arg->to_json());
+        }
+        return json{{"kind", "app"}, {"fn", fn->to_json()}, {"args", jargs}};
+    }
+
+    bool is_exact() const noexcept {
+        for (const auto& arg : args) {
+            if (is_a<TExpr>(arg)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     std::string to_string() const noexcept override {
-        std::string out = "exact ";
+        std::string out = is_exact() ? "exact " : "apply ";
         if (fn) {
-            out += fn->to_string() + " ";
+            out += fn->to_string();
         } else {
-            out += "(?nullptr) ";
+            out += "?nullptr";
+        }
+        for (const auto& arg : args) {
+            out += " ";
+            if (arg) {
+                out += "(" + arg->to_string() + ")";
+            } else {
+                out += "(?nullptr)";
+            }
         }
         return out;
     }
@@ -229,10 +240,10 @@ Top-level declarations
 */
 
 // A proof
-struct TProof : public LExpr {
-    std::unique_ptr<LExpr> expr;
+struct TProof : public TExpr {
+    std::unique_ptr<TExpr> expr;
 
-    TProof(std::unique_ptr<LExpr> expr) : expr(std::move(expr)) {
+    TProof(std::unique_ptr<TExpr> expr) : expr(std::move(expr)) {
         if (expr) {
             expr->parent = this;
         }
@@ -254,7 +265,7 @@ struct TProof : public LExpr {
 /* A theorem.
  * e.x. theorem ex_falso type False -> p apply False.elim
  */
-struct TTheorem : public LExpr {
+struct TTheorem : public TExpr {
     std::string name;
     std::unique_ptr<LExpr> type;
     std::unique_ptr<TProof> proof;
@@ -277,14 +288,13 @@ struct TTheorem : public LExpr {
     };
 
     std::string to_string() const noexcept override {
-        std::string out = "theorem " + name + "\n";
-        out += "type ";
+        std::string out = "theorem " + name + " : ";
         if (type) {
             out += type->to_string();
         } else {
             out += "?nullptr";
         }
-        out += "\n\n";
+        out += " := by ";
         if (proof) {
             out += proof->to_string();
         } else {

@@ -85,4 +85,25 @@ std::unique_ptr<Derived> downcast_unique(std::unique_ptr<Base>& base_ptr) {
     base_ptr.release(); // Release ownership from base_ptr
     return std::unique_ptr<Derived>(derived_ptr); // Transfer ownership to Derived unique_ptr
 }
-std::string latexify(const std::string& str); // converts text string to allowable LaTeX form; for now, turns _ into \_ and \ into \\
+
+// Checks if a downcast is possible, without transferring ownership
+template <typename Derived, typename Base>
+bool is_a(std::unique_ptr<Base>& base_ptr) {
+    if (!base_ptr) {
+        return false;
+    }
+    Derived* derived_ptr = dynamic_cast<Derived*>(base_ptr.get());
+    return derived_ptr != nullptr;
+}
+
+template <typename Derived, typename Base>
+bool is_a(const std::unique_ptr<Base>& base_ptr) {
+    if (!base_ptr) {
+        return false;
+    }
+    Derived* derived_ptr = dynamic_cast<Derived*>(base_ptr.get());
+    return derived_ptr != nullptr;
+}
+
+// converts text string to allowable LaTeX form; for now, turns _ into "\_" and \ into "\\"
+std::string latexify(const std::string& str);
