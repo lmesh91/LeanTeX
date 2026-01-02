@@ -90,3 +90,25 @@ std::string strip(const std::string& str) {
         return "";
     return str.substr(start, end - start + 1);
 }
+std::string latexify(const std::string &str) {
+    std::string out;
+    out.reserve(str.size() * 2); // worst case expansion
+
+    for (char c : str) {
+        switch (c) {
+            case '\\': out += "\\\\"; break;
+            case '_':  out += "\\_";  break;
+            case '#':  out += "\\#";  break;
+            case '$':  out += "\\$";  break;
+            case '%':  out += "\\%";  break;
+            case '&':  out += "\\&";  break;
+            case '{':  out += "\\{";  break;
+            case '}':  out += "\\}";  break;
+            case '^':  out += "\\^{}"; break;
+            case '~':  out += "\\~{}"; break;
+            default:   out += c;
+        }
+    }
+    return out;
+}
+
