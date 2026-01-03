@@ -1,8 +1,10 @@
 // ir_to_latex.hpp - Conversion from Lean IR to LaTeX IR
 #include "ir_to_latex.hpp"
-
+#include "ir/utils.hpp"
 #include <deque>
 #include <forward_list>
+
+#include "ir/utils.hpp"
 
 // Converts a vector of Lean IR expressions to LaTeX IR expressions
 // Note that the original object is invalidated, as some LExpr may be moved over
@@ -32,9 +34,9 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr) {
         // if an LConst is not attached to a larger structure, it can be treated as a function application with no arguments
         return std::make_unique<TApply>(std::move(const_expr), std::vector<std::unique_ptr<LExpr>>{});
     } else if (auto app = downcast_unique<LApp>(expr)) {
-        /*std::vector<std::unique_ptr<LExpr>> LArgs = std::move(app->args);
+        std::vector<std::unique_ptr<LExpr>> LArgs = std::move(app->args);
         std::vector<std::unique_ptr<LExpr>> TArgs;
-        std::deque<std::unique_ptr<LApp>> Apps;
+        std::deque<std::unique_ptr<LExpr>> Apps;
         bool has_have = false;
         int count = 0;
         for (auto& arg : LArgs) {
@@ -44,7 +46,7 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr) {
             }
             // Case 2 - arg is LLambda
             if (is_a<LLambda>(arg)) {
-                TArgs.push_back(downcast_unique<LExpr>(_ir_conv(std::move(arg))));
+                TArgs.push_back(_ir_conv(std::move(arg)));
             }
             // Case 3 - arg is LApp
             if (is_a<LApp>(arg)) {
@@ -58,32 +60,37 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr) {
         if (!has_have) {
             return parent;
         }
-        for (auto& app : Apps) {
+        for (auto& appl : Apps) {
             count--;
-            std::unique_ptr<LExpr> type = get_type(app); // need to implement function
-            std::unique_ptr<TExpr> converted = downcast_unique<TExpr>(_ir_conv(std::move(app)));
+            std::unique_ptr<LExpr> type = infer_type(appl);
+            std::unique_ptr<TExpr> converted = downcast_unique<TExpr>(_ir_conv(std::move(appl)));
             parent = std::make_unique<THave>("th" + std::to_string(count), std::move(type), std::move(converted), std::move(parent));
         }
-        return parent;*/
+        return parent;
     } else if (auto binder = downcast_unique<LBinder>(expr)) {
         log("Conversion of LBinder expressions not supported", LogLevel::WARNING);
         return binder;
     } else if (auto lambda = downcast_unique<LLambda>(expr)) {
-        /*std::unique_ptr<TExpr> type = get_type(lambda); // need to implement function
-        std::unique_ptr<TExpr> body = downcast_unique<TExpr>(_ir_conv(std::move(lambda->body)));
+        // Clone the lambda as an LExpr so we can pass a lvalue reference
+        std::unique_ptr<LExpr> lambda_as_lexpr = lambda->clone();
+        std::unique_ptr<LExpr> type = infer_type(lambda_as_lexpr);
+        std::unique_ptr<LExpr> body = _ir_conv(std::move(lambda->body));
         std::unique_ptr<TExpr> intro = std::make_unique<TIntro>(std::move(lambda->binders), std::move(body));
-        return std::make_unique<TGoal>(std::make_unique<LBinder>("example", std::move(type), LBinder::Info::Explicit), std::move(intro));*/
+        return std::make_unique<TGoal>(std::make_unique<LBinder>("LBinder", std::move(type), LBinder::Info::Explicit), std::move(intro));
     } else if (auto forall = downcast_unique<LForAll>(expr)) {
         log("Conversion of LForAll expressions not supported", LogLevel::WARNING);
         return forall;
     } else if (auto let = downcast_unique<LLet>(expr)) {
-        log("Conversion of LLet expressions not supported", LogLevel::WARNING);
-        /*if (is_a<LLambda>(let->value)) {
+        if (is_a<LLambda>(let->value)) {
             std::unique_ptr<LLambda> lam = downcast_unique<LLambda>(std::move(let->value));
             std::unique_ptr<TExpr> body = downcast_unique<TExpr>(_ir_conv(std::move(let->body)));
             std::unique_ptr<TExpr> intro = std::make_unique<TIntro>(std::move(lam->binders), downcast_unique<TExpr>(_ir_conv(std::move(lam->body))));
             return std::make_unique<THave>("m", std::move(let->type), std::move(intro), std::move(body));
-        }*/
+        }
+        if (is_a<LApp>(let->value)) {
+            return _ir_conv(std::move(let->value));
+        }
+        log("Conversion of this LLet expression not supported", LogLevel::WARNING);
         return let;
     } else if (auto literal = downcast_unique<LLiteral>(expr)) {
         return literal;

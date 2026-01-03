@@ -94,8 +94,8 @@ It is similar to lambda expressions in term mode.
 */
 struct TIntro : public TExpr {
     std::vector<std::unique_ptr<LBinder>> params;
-    std::unique_ptr<TExpr> body;
-    TIntro(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<TExpr> body) : params(std::move(params)), body(std::move(body)) {
+    std::unique_ptr<LExpr> body;
+    TIntro(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {
         for (auto& param : this->params) {
             if (param) {
                 param->parent = this; // the intro statement has the names from and ownership of the binders
@@ -111,7 +111,7 @@ struct TIntro : public TExpr {
         for (const auto& param : params) {
             param_clones.push_back(param ? downcast_unique<LBinder>(param->clone()) : nullptr);
         }
-        return std::make_unique<TIntro>(std::move(param_clones), body ? downcast_unique<TExpr>(body->clone()) : nullptr);
+        return std::make_unique<TIntro>(std::move(param_clones), body ? downcast_unique<LExpr>(body->clone()) : nullptr);
     }
     json to_json() const override {
         json jparams = json::array();

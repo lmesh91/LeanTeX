@@ -1,4 +1,5 @@
 // Utility functions for both types of IR, not directly tied to the conversion process
+#pragma once
 #include "utility/misc.hpp"
 #include "ir/lean.hpp"
 #include "ir/latex.hpp"
@@ -19,7 +20,7 @@ Derived* downcast_raw(std::unique_ptr<LExpr>& base_ptr) {
 void recursive_apply_l(std::unique_ptr<LExpr>& expr, std::function<void(std::unique_ptr<LExpr>&)> fun);
 
 // Specific helper function for LBinders
-void recursive_apply_l(std::unique_ptr<LBinder>& expr, std::function<void(std::unique_ptr<LExpr>&)> fun) {
+inline void recursive_apply_l(std::unique_ptr<LBinder>& expr, std::function<void(std::unique_ptr<LExpr>&)> fun) {
     if (!expr) return;
     auto lexpr = expr->clone();
     fun(lexpr);
@@ -28,7 +29,7 @@ void recursive_apply_l(std::unique_ptr<LBinder>& expr, std::function<void(std::u
 
 // Applies a function recursively on an LExpr and its children.
 // Note that the pointers are passed by reference so they can modify their containers if they are overridden.
-void recursive_apply_l(std::unique_ptr<LExpr>& expr, std::function<void(std::unique_ptr<LExpr>&)> fun) {
+inline void recursive_apply_l(std::unique_ptr<LExpr>& expr, std::function<void(std::unique_ptr<LExpr>&)> fun) {
     if (!expr) return;
     fun(expr);
     if (auto binder = downcast_raw<LBinder>(expr)) {
@@ -63,7 +64,7 @@ void recursive_apply_l(std::unique_ptr<LExpr>& expr, std::function<void(std::uni
 
 // Substitutes types for given typenames
 // This is a helper that recurses through an LLevel
-void _substitute_types(std::unordered_map<std::string, LLevel*>& types, std::unique_ptr<LLevel>& lv) {
+inline void _substitute_types(std::unordered_map<std::string, LLevel*>& types, std::unique_ptr<LLevel>& lv) {
     if (lv->arg1) {
         if (lv->arg1->type == LLevel::Type::Param) {
             if (types.contains(lv->arg1->name)) {
@@ -84,7 +85,7 @@ void _substitute_types(std::unordered_map<std::string, LLevel*>& types, std::uni
     }
 }
 
-void substitute_types(std::unordered_map<std::string, LLevel*>& types, std::unique_ptr<LExpr>& expr) {
+inline void substitute_types(std::unordered_map<std::string, LLevel*>& types, std::unique_ptr<LExpr>& expr) {
     recursive_apply_l(expr, [&types](std::unique_ptr<LExpr>& e) {
         if (auto sort = downcast_raw<LSort>(e)) {
             _substitute_types(types, sort->level);
@@ -92,7 +93,7 @@ void substitute_types(std::unordered_map<std::string, LLevel*>& types, std::uniq
     });
 }
 
-void substitute_binder(std::string name, LExpr* value, std::unique_ptr<LExpr>& expr) {
+inline void substitute_binder(std::string name, LExpr* value, std::unique_ptr<LExpr>& expr) {
     auto check = [&name, &value](std::unique_ptr<LExpr>& e) {
         if (auto var = downcast_raw<LVar>(e)) {
             if (var->name == name) {
@@ -106,7 +107,7 @@ void substitute_binder(std::string name, LExpr* value, std::unique_ptr<LExpr>& e
 
 // Infer the type of an expression
 // todo: add a second pass to convert LLambdas into LForAlls
-std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
+inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
     if (auto var = downcast_clone<LVar>(expr)) {
         if (!var->type) {
             log("Cannot infer type of unsolved variable"+var->to_string(), LogLevel::WARNING);

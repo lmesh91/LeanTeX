@@ -1,0 +1,14 @@
+theorem comm_and
+type Iff (And p q) (And q p)
+
+apply Iff.intro
+goal mp : And p q -> And q p
+intro (h : And p q)
+have hq : q := And.right h
+have hp : p := And.left h
+exact And.intro hq hp
+goal mpr : And q p -> And p q
+intro (h : And q p)
+have hp : p := And.right h
+have hq : q := And.left h
+exact And.intro hp hq
