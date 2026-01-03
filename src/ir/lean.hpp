@@ -400,19 +400,43 @@ struct LSort : public LExpr {
 LConst represents constants in Lean.
 This is separated from LVar as the difference between variables and constants
 are crucial for translation into natural language.
+The type of this constant may be "solved" during conversion to Lean IR.
 */
 struct LConst : public LExpr {
+    struct Meta {
+        std::vector<std::string> levels;
+        std::unique_ptr<LExpr> expr;
+    };
     std::string name;
     std::vector<std::unique_ptr<LLevel>> levels;
+    LConst::Meta meta;
+    bool solved = false;
 
-    LConst(std::string name, std::vector<std::unique_ptr<LLevel>> levels) : name(std::move(name)), levels(std::move(levels)) {};
+    LConst(std::string name, std::vector<std::unique_ptr<LLevel>> levels) : name(std::move(name)), levels(std::move(levels)), meta({}, nullptr) {};
 
     std::unique_ptr<LExpr> clone() const override {
         std::vector<std::unique_ptr<LLevel>> lvl_clones;
         for (const auto& lvl : levels) {
             lvl_clones.push_back(lvl ? lvl->clone() : nullptr);
         }
-        return std::make_unique<LConst>(name, std::move(lvl_clones));
+        auto out = std::make_unique<LConst>(name, std::move(lvl_clones));
+        if (solved) {
+            out->solved = true;
+            out->meta.levels = meta.levels;
+            out->meta.expr = meta.expr->clone();
+        }
+        return out;
+    }
+
+    bool solve(const LConst::Meta& m) {
+        if (!solved) {
+            solved = true;
+            meta.expr = m.expr->clone();
+            meta.levels = m.levels;
+            return true;
+        } else {
+            return false;
+        }
     }
 
     json to_json() const override {
@@ -422,6 +446,9 @@ struct LConst : public LExpr {
                 throw std::runtime_error("LConst " + name + " has null level");
             }
             jlevels.push_back(level->to_json());
+        }
+        if (solved && meta.expr) {
+            return json{{"kind", "const"}, {"name", name}, {"levels", jlevels}, {"type", meta.expr->to_json()}};
         }
         return json{{"kind", "const"}, {"name", name}, {"levels", jlevels}};
     }

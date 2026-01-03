@@ -2,6 +2,7 @@
 #include "loader.hpp"
 #include "lean_to_ir.hpp"
 #include "utility/misc.hpp"
+#include "ir/utils.hpp"
 
 // Converts Names in Lean into strings, e.g. ["_uniq", 6] -> "_uniq.6"
 std::string kind_to_string(const json& kind) {
@@ -96,9 +97,9 @@ LBinder::Info binder_info_of(const std::string& info_str) {
         return LBinder::Info::Explicit;
     } else if (info_str == "implicit") {
         return LBinder::Info::Implicit;
-    } else if (info_str == "strict_implicit") {
+    } else if (info_str == "strictImplicit") {
         return LBinder::Info::StrictImplicit;
-    } else if (info_str == "inst_implicit") {
+    } else if (info_str == "instImplicit") {
         return LBinder::Info::InstImplicit;
     } else {
         log("Unknown binder info '"+info_str+"', defaulting to explicit", LogLevel::WARNING);
@@ -106,9 +107,9 @@ LBinder::Info binder_info_of(const std::string& info_str) {
     }
 }
 
-// Solves all free and bound variables in the expression using the provided context
+// Solves all free and bound variables, and constants, in the expression using the provided context
 // This function is a wrapper that initializes the parameters used in the recursive helper
-void solve_variables(LExpr* expr, const json& ctx) {
+void solve_variables(LExpr* expr, const json& ctx, const std::unordered_map<std::string, LConst::Meta>& const_types) {
     std::unordered_map<std::string, std::unique_ptr<LBinder>> free_names;
     for (size_t i = 0; i < ctx.size(); i++) {
         std::unique_ptr<LExpr> type = parse_expr(at(ctx, i, "typeExpr"));
@@ -116,13 +117,14 @@ void solve_variables(LExpr* expr, const json& ctx) {
         free_names[kind_to_string(at(ctx, i, "id"))] = std::make_unique<LBinder>(kind_to_string(at(ctx, i, "name")), std::move(type), LBinder::Info::Explicit);
     }
     std::vector<std::unique_ptr<LBinder>> bound_names;
-    _solve_variables(expr, free_names, bound_names);
+    _solve_variables(expr, free_names, bound_names, const_types);
 }
 
 // Main recursive function to solve variables:
 // - free_names: mapping from free variable IDs to their names
 // - bound_names: stack of bound variables in scope
-void _solve_variables(LExpr* expr, std::unordered_map<std::string, std::unique_ptr<LBinder>>& free_names, std::vector<std::unique_ptr<LBinder>>& bound_names) {
+// - const_types: mapping from names of used constants to their types
+void _solve_variables(LExpr* expr, std::unordered_map<std::string, std::unique_ptr<LBinder>>& free_names, std::vector<std::unique_ptr<LBinder>>& bound_names, const std::unordered_map<std::string, LConst::Meta>& const_types) {
     if (!expr) return;
     if (LVar* var = dynamic_cast<LVar*>(expr)) {
         if (var->var_type == LVar::Type::Free) {
@@ -139,42 +141,46 @@ void _solve_variables(LExpr* expr, std::unordered_map<std::string, std::unique_p
                 log("Bound variable with index "+std::to_string(var->index)+" out of range (only "+std::to_string(bound_names.size())+" binders in scope), cannot solve", LogLevel::WARNING);
             }
         }
+    } else if (LConst* const_expr = dynamic_cast<LConst*>(expr)) {
+        if (const_types.contains(const_expr->name)) {
+            const_expr->solve(const_types.at(const_expr->name));
+        }
     } else if (LApp* app = dynamic_cast<LApp*>(expr)) {
-        _solve_variables(app->fn.get(), free_names, bound_names);
+        _solve_variables(app->fn.get(), free_names, bound_names, const_types);
         for (const auto& arg : app->args) {
-            _solve_variables(arg.get(), free_names, bound_names);
+            _solve_variables(arg.get(), free_names, bound_names, const_types);
         }
     } else if (LLambda* lam = dynamic_cast<LLambda*>(expr)) {
         for (auto& binder : lam->binders) {
-            _solve_variables(binder->type.get(), free_names, bound_names);
+            _solve_variables(binder->type.get(), free_names, bound_names, const_types);
             bound_names.push_back(downcast_unique<LBinder>(binder->clone()));
         }
-        _solve_variables(lam->body.get(), free_names, bound_names);
+        _solve_variables(lam->body.get(), free_names, bound_names, const_types);
         for (size_t i = 0; i < lam->binders.size(); i++) {
             bound_names.pop_back();
         }
     } else if (LForAll* fa = dynamic_cast<LForAll*>(expr)) {
         for (auto& binder : fa->binders) {
-            _solve_variables(binder->type.get(), free_names, bound_names);
+            _solve_variables(binder->type.get(), free_names, bound_names, const_types);
             bound_names.push_back(downcast_unique<LBinder>(binder->clone()));
         }
-        _solve_variables(fa->body.get(), free_names, bound_names);
+        _solve_variables(fa->body.get(), free_names, bound_names, const_types);
         for (size_t i = 0; i < fa->binders.size(); i++) {
             bound_names.pop_back();
         }
     } else if (LLet* let = dynamic_cast<LLet*>(expr)) {
-        _solve_variables(let->type.get(), free_names, bound_names);
-        _solve_variables(let->value.get(), free_names, bound_names);
+        _solve_variables(let->type.get(), free_names, bound_names, const_types);
+        _solve_variables(let->value.get(), free_names, bound_names, const_types);
         bound_names.push_back(std::make_unique<LBinder>(let->name, let->type->clone(), LBinder::Info::Explicit));
-        _solve_variables(let->body.get(), free_names, bound_names);
+        _solve_variables(let->body.get(), free_names, bound_names, const_types);
         bound_names.pop_back();
     } else if (LProj* proj = dynamic_cast<LProj*>(expr)) {
-        _solve_variables(proj->structE.get(), free_names, bound_names);
+        _solve_variables(proj->structE.get(), free_names, bound_names, const_types);
     }
     // The remaining expression types do not contain variables or bindings
 }
 
-std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
+std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab, const json& sym) {
     std::vector<std::unique_ptr<LExpr>> out;
     // Elaboration data is ordered by declarations.
     // The last one is skipped since it is always "end of input".
@@ -188,7 +194,7 @@ std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
         // The first argument is declaration modifiers. This may be used
         // to parse custom attributes in the future, but for now it is ignored.
         if (decl == "theorem") {
-            out.push_back(parse_theorem(elab.at(i)));
+            out.push_back(parse_theorem(elab.at(i), sym));
             log("Parsed "+out.back()->to_string(), LogLevel::DEBUG);
         } else {
             log("Declaration of type "+decl+" is not supported, skipping", LogLevel::WARNING);
@@ -198,7 +204,7 @@ std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab) {
     return out;
 }
 
-std::unique_ptr<LTheorem> parse_theorem(const json& elab) {
+std::unique_ptr<LTheorem> parse_theorem(const json& elab, const json& sym) {
     // The elaboration for theorem *appears* to be of the form:
     // [param1Type, param1, ..., proofType, param1, ..., proof, proofName1, proofName2]
     // where global variables only appear in the first parameter list.
@@ -236,10 +242,36 @@ std::unique_ptr<LTheorem> parse_theorem(const json& elab) {
         };
     };
 
+    // Before we parse parameters, we will parse the symbols, so they can be used in the solving phase
+    json this_sym;
+    for (size_t i = 0; i < sym.size(); i++) {
+        // Determine which child of the symbols list refers to this theorem. It is in an arbitrary order.
+        if (kind_to_string(at(sym, i, "name")) == name) {
+            this_sym = sym.at(i);
+            break;
+        }
+    }
+    std::unordered_map<std::string, LConst::Meta> type_sym;
+    std::unordered_map<std::string, LConst::Meta> value_sym;
+    for (const auto& s : this_sym.at("typeReferences")) {
+        std::vector<std::string> levels;
+        for (const auto& l : s.at("levels")) {
+            levels.push_back(kind_to_string(l));
+        }
+        type_sym[kind_to_string(s.at("name"))] = {std::move(levels), parse_and_solve(s.at("typeExpr"))};
+    }
+    for (const auto& s : this_sym.at("valueReferences")) {
+        std::vector<std::string> levels;
+        for (const auto& l : s.at("levels")) {
+            levels.push_back(kind_to_string(l));
+        }
+        value_sym[kind_to_string(s.at("name"))] = {std::move(levels), parse_and_solve(s.at("typeExpr"))};
+    }
+
     // Parse each parameter and the proof type
     for (int i = 0; i < n_params; i++) {
         std::unique_ptr<LExpr> param_type = parse_expr(child(elab, 2*i));
-        solve_variables(param_type.get(), at(child(elab, 2*i), "info", "term", "context"));
+        solve_variables(param_type.get(), at(child(elab, 2*i), "info", "term", "context"), type_sym);
         params.push_back(std::make_unique<LBinder>(
             at(child(elab, 2*i+1), "ref", "str"),
             std::move(param_type),
@@ -247,7 +279,7 @@ std::unique_ptr<LTheorem> parse_theorem(const json& elab) {
         ));
     };
     type = parse_expr(child(elab, 2*n_params));
-    solve_variables(type.get(), at(child(elab, 2*n_params), "info", "term", "context"));
+    solve_variables(type.get(), at(child(elab, 2*n_params), "info", "term", "context"), type_sym);
 
     // The next step is to check if we are in term mode
     // Figure out which part of the elaboration contains the proof
@@ -263,7 +295,7 @@ std::unique_ptr<LTheorem> parse_theorem(const json& elab) {
     const json& proof_decl = child(child(elab, i), 0);
     if (proof_decl.at("info").contains("term")) {
         std::unique_ptr<LExpr> proof_term = parse_expr(proof_decl);
-        solve_variables(proof_term.get(), at(child(child(elab, i),0), "info", "term", "context"));
+        solve_variables(proof_term.get(), at(child(child(elab, i),0), "info", "term", "context"), value_sym);
         proof = std::make_unique<LTermProof>(std::move(proof_term));
     } else {
         log("Only term proofs are supported, skipping theorem " + name, LogLevel::WARNING);
@@ -273,7 +305,6 @@ std::unique_ptr<LTheorem> parse_theorem(const json& elab) {
 }
 
 // Parses a Lean Expr object.
-// todo: solve variables
 std::unique_ptr<LExpr> parse_expr(const json& expr) {
     // Check if we are in the elaboration tree
     if (expr.contains("info") && expr.at("info").contains("term")) {
@@ -375,4 +406,11 @@ std::unique_ptr<LLevel> parse_level(const json& level) {
         log("Level JSON:\n"+level.dump(), LogLevel::DEBUG);
         return nullptr;
     }
+}
+
+// Helper function to solve a "simple" expression (i.e. one where underlying context is unimportant)
+std::unique_ptr<LExpr> parse_and_solve(const json& expr) {
+    std::unique_ptr<LExpr> parsed = parse_expr(expr);
+    solve_variables(parsed.get(), json::array(), std::unordered_map<std::string, LConst::Meta>{});
+    return parsed;
 }

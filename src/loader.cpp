@@ -191,6 +191,7 @@ void Loader::run_jixia() {
     std::ostringstream command;
     command << "lake env " << get_option("Jixia")
             << " -e " << get_option("WorkingDir") << "/jixia/" << code_name << ".elab.json"
+            << " -s " << get_option("WorkingDir") << "/jixia/" << code_name << ".sym.json"
             << " -i " << get_option("CodePath");
     log("Executing command: " + command.str(), LogLevel::DEBUG);
     std::system(command.str().c_str());
@@ -228,9 +229,10 @@ void Loader::convert() {
     std::string code_name = get_filename(get_option("CodePath"));
     // Load elaboration JSON files
     json elab_json = get_json(get_option("WorkingDir") + "/jixia/" + code_name + ".elab.json");
+    json sym_json = get_json(get_option("WorkingDir") + "/jixia/" + code_name + ".sym.json");
     log("Loaded elaboration JSON files", LogLevel::DEBUG);
     // Convert to Lean IR
-    std::vector<std::unique_ptr<LExpr>> lean_ir = lean_to_ir(elab_json);
+    std::vector<std::unique_ptr<LExpr>> lean_ir = lean_to_ir(elab_json, sym_json);
     log("Converted Lean code to Lean IR with " + std::to_string(lean_ir.size()) + " top-level expressions", LogLevel::DEBUG);
     // Convert to LaTeX IR
     log("Converting Lean IR to LaTeX IR");
