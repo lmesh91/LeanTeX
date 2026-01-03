@@ -30,7 +30,7 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr) {
         // if an LConst is not attached to a larger structure, it can be treated as a function application with no arguments
         return std::make_unique<TApply>(std::move(const_expr), std::vector<std::unique_ptr<LExpr>>{});
     } else if (auto app = downcast_unique<LApp>(expr)) {
-        std::vector<std::unique_ptr<LExpr>> LArgs = std::move(app->args);
+        /*std::vector<std::unique_ptr<LExpr>> LArgs = std::move(app->args);
         std::vector<std::unique_ptr<LExpr>> TArgs;
         for (auto& arg : LArgs) {
             // Case 1 - arg is LVar
@@ -48,15 +48,15 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr) {
                 TArgs.push_back(std::make_unique<THave>("th", type, converted, nullptr));
             }
         }
-        return std::make_unique<TApply>(std::move(app->fn), TArgs);
+        return std::make_unique<TApply>(std::move(app->fn), TArgs);*/
     } else if (auto binder = downcast_unique<LBinder>(expr)) {
         log("Conversion of LBinder expressions not supported", LogLevel::WARNING);
         return binder;
     } else if (auto lambda = downcast_unique<LLambda>(expr)) {
-        std::unique_ptr<TExpr> type = get_type(lambda); // need to implement function
+        /*std::unique_ptr<TExpr> type = get_type(lambda); // need to implement function
         std::unique_ptr<TExpr> body = downcast_unique<TExpr>(_ir_conv(std::move(lambda->body)));
         std::unique_ptr<TIntro> intro = std::make_unique<TIntro>(std::move(lambda->binders), body);
-        return std::make_unique<TGoal>(type, intro);
+        return std::make_unique<TGoal>(type, intro);*/
     } else if (auto forall = downcast_unique<LForAll>(expr)) {
         log("Conversion of LForAll expressions not supported", LogLevel::WARNING);
         return forall;
