@@ -109,29 +109,32 @@ LBinder::Info binder_info_of(const std::string& info_str) {
 // Solves all free and bound variables in the expression using the provided context
 // This function is a wrapper that initializes the parameters used in the recursive helper
 void solve_variables(LExpr* expr, const json& ctx) {
-    std::map<std::string, std::string> free_names;
+    std::unordered_map<std::string, std::unique_ptr<LBinder>> free_names;
     for (size_t i = 0; i < ctx.size(); i++) {
-        free_names[kind_to_string(at(ctx, i, "id"))] = kind_to_string(at(ctx, i, "name"));
+        std::unique_ptr<LExpr> type = parse_expr(at(ctx, i, "typeExpr"));
+        // Note that the binder type is unused here
+        free_names[kind_to_string(at(ctx, i, "id"))] = std::make_unique<LBinder>(kind_to_string(at(ctx, i, "name")), std::move(type), LBinder::Info::Explicit);
     }
-    _solve_variables(expr, free_names, {});
+    std::vector<std::unique_ptr<LBinder>> bound_names;
+    _solve_variables(expr, free_names, bound_names);
 }
 
 // Main recursive function to solve variables:
 // - free_names: mapping from free variable IDs to their names
 // - bound_names: stack of bound variables in scope
-void _solve_variables(LExpr* expr, const std::map<std::string, std::string>& free_names, std::vector<std::string> bound_names) {
+void _solve_variables(LExpr* expr, std::unordered_map<std::string, std::unique_ptr<LBinder>>& free_names, std::vector<std::unique_ptr<LBinder>>& bound_names) {
     if (!expr) return;
     if (LVar* var = dynamic_cast<LVar*>(expr)) {
-        if (var->type == LVar::Type::Free) {
+        if (var->var_type == LVar::Type::Free) {
             if (free_names.contains(var->name)) {
-                var->solve(free_names.at(var->name));
+                var->solve(downcast_unique<LBinder>(free_names.at(var->name)->clone()));
             } else {
                 log("Free variable '"+var->name+"' not found in context, cannot solve", LogLevel::WARNING);
             }
-        } else if (var->type == LVar::Type::Bound) {
+        } else if (var->var_type == LVar::Type::Bound) {
             // De Bruijn indices count from the innermost binder outwards
             if (var->index < bound_names.size()) {
-                var->solve(bound_names[bound_names.size() - 1 - var->index]);
+                var->solve(downcast_unique<LBinder>(bound_names[bound_names.size() - 1 - var->index]->clone()));
             } else {
                 log("Bound variable with index "+std::to_string(var->index)+" out of range (only "+std::to_string(bound_names.size())+" binders in scope), cannot solve", LogLevel::WARNING);
             }
@@ -142,18 +145,18 @@ void _solve_variables(LExpr* expr, const std::map<std::string, std::string>& fre
             _solve_variables(arg.get(), free_names, bound_names);
         }
     } else if (LLambda* lam = dynamic_cast<LLambda*>(expr)) {
-        for (const auto& binder : lam->binders) {
+        for (auto& binder : lam->binders) {
             _solve_variables(binder->type.get(), free_names, bound_names);
-            bound_names.push_back(binder->name);
+            bound_names.push_back(downcast_unique<LBinder>(binder->clone()));
         }
         _solve_variables(lam->body.get(), free_names, bound_names);
         for (size_t i = 0; i < lam->binders.size(); i++) {
             bound_names.pop_back();
         }
     } else if (LForAll* fa = dynamic_cast<LForAll*>(expr)) {
-        for (const auto& binder : fa->binders) {
+        for (auto& binder : fa->binders) {
             _solve_variables(binder->type.get(), free_names, bound_names);
-            bound_names.push_back(binder->name);
+            bound_names.push_back(downcast_unique<LBinder>(binder->clone()));
         }
         _solve_variables(fa->body.get(), free_names, bound_names);
         for (size_t i = 0; i < fa->binders.size(); i++) {
@@ -162,7 +165,7 @@ void _solve_variables(LExpr* expr, const std::map<std::string, std::string>& fre
     } else if (LLet* let = dynamic_cast<LLet*>(expr)) {
         _solve_variables(let->type.get(), free_names, bound_names);
         _solve_variables(let->value.get(), free_names, bound_names);
-        bound_names.push_back(let->name);
+        bound_names.push_back(std::make_unique<LBinder>(let->name, let->type->clone(), LBinder::Info::Explicit));
         _solve_variables(let->body.get(), free_names, bound_names);
         bound_names.pop_back();
     } else if (LProj* proj = dynamic_cast<LProj*>(expr)) {

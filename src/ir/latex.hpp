@@ -13,6 +13,9 @@ TExpr is a base class for Latex IR expressions.
 It inherits basic functionality from LExpr (and includes some LExpr types as sub-expressions).
 However, it is designed to be closer to Lean's "tactic mode", which builds up
 a proof expression in a way that is similar to a written proof.
+
+Also of note, the to_string won't exactly match Lean syntax, as
+there is more information that is of use that is usually implicit in Lean syntax.
 */
 struct TExpr : public LExpr {};
 
@@ -42,6 +45,10 @@ struct THave : public TExpr {
             this->body->parent = this;
         }
     };
+
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<THave>(name, type ? type->clone() : nullptr, value ? downcast_unique<TExpr>(value->clone()) : nullptr, body ? downcast_unique<TExpr>(body->clone()) : nullptr);
+    }
 
     json to_json() const override {
         if (!type) {
@@ -99,6 +106,13 @@ struct TIntro : public TExpr {
             this->body->parent = this;
         }
     };
+    std::unique_ptr<LExpr> clone() const override {
+        std::vector<std::unique_ptr<LBinder>> param_clones;
+        for (const auto& param : params) {
+            param_clones.push_back(param ? downcast_unique<LBinder>(param->clone()) : nullptr);
+        }
+        return std::make_unique<TIntro>(std::move(param_clones), body ? downcast_unique<TExpr>(body->clone()) : nullptr);
+    }
     json to_json() const override {
         json jparams = json::array();
         for (const auto& param : params) {
@@ -146,6 +160,9 @@ struct TGoal : public TExpr {
             this->body->parent = this;
         }
     };
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<TGoal>(param ? downcast_unique<LBinder>(param->clone()) : nullptr, body ? downcast_unique<TExpr>(body->clone()) : nullptr);
+    }
     json to_json() const override {
         if (!param) {
             throw std::runtime_error("TGoal has null parameter");
@@ -192,6 +209,15 @@ struct TApply : public TExpr {
             this->fn->parent = this;
         }
     };
+
+    std::unique_ptr<LExpr> clone() const override {
+        std::unique_ptr<LExpr> fn_clone = fn ? fn->clone() : nullptr;
+        std::vector<std::unique_ptr<LExpr>> arg_clones;
+        for (const auto& arg : args) {
+            arg_clones.push_back(arg ? arg->clone() : nullptr);
+        }
+        return std::make_unique<TApply>(std::move(fn_clone), std::move(arg_clones));
+    }
 
     json to_json() const override {
         if (!fn) {
@@ -249,6 +275,10 @@ struct TProof : public TExpr {
         }
     };
 
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<TProof>(expr ? downcast_unique<TExpr>(expr->clone()) : nullptr);
+    }
+
     json to_json() const override {
         if (!expr) {
             throw std::runtime_error("TProof missing expr");
@@ -276,6 +306,9 @@ struct TTheorem : public TExpr {
         if (proof) {
             proof->parent = this;
         }
+    }
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<TTheorem>(name, type ? type->clone() : nullptr, proof ? downcast_unique<TProof>(proof->clone()) : nullptr);
     }
     json to_json() const override {
         if (!type) {

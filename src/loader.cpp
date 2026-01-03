@@ -8,6 +8,7 @@
 #include "loader.hpp"
 #include "utility/misc.hpp"
 #include "lean_to_ir.hpp"
+#include "ir_to_latex.hpp"
 #include "ir/latex.hpp"
 
 Loader LOADER;
@@ -229,6 +230,9 @@ void Loader::convert() {
     json elab_json = get_json(get_option("WorkingDir") + "/jixia/" + code_name + ".elab.json");
     log("Loaded elaboration JSON files", LogLevel::DEBUG);
     // Convert to Lean IR
-    std::vector<std::unique_ptr<LExpr>> ir = lean_to_ir(elab_json);
-    log("Converted Lean code to Lean IR with " + std::to_string(ir.size()) + " top-level expressions", LogLevel::DEBUG);
+    std::vector<std::unique_ptr<LExpr>> lean_ir = lean_to_ir(elab_json);
+    log("Converted Lean code to Lean IR with " + std::to_string(lean_ir.size()) + " top-level expressions", LogLevel::DEBUG);
+    // Convert to LaTeX IR
+    log("Converting Lean IR to LaTeX IR");
+    std::vector<std::unique_ptr<TExpr>> latex_ir = ir_conv(std::move(lean_ir));
 }
