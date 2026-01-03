@@ -1,0 +1,10 @@
+name = "LeanTeX"
+version = "0.1.0"
+defaultTargets = ["leantex"]
+
+[[lean_lib]]
+name = "LeanTeX"
+
+[[lean_exe]]
+name = "leantex"
+root = "Main"
