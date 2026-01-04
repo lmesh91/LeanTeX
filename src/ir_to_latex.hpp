@@ -5,4 +5,4 @@
 #include <forward_list>
 
 std::vector<std::unique_ptr<TExpr>> ir_conv(std::vector<std::unique_ptr<LExpr>>&& lean_ir);
-std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> lean_expr);
+std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> lean_expr, int depth = 0);
