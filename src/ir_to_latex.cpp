@@ -64,14 +64,19 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr, int depth) {
             }
             // Case 3 - arg is LApp
             if (is_a<LApp>(arg)) {
-                has_have = true;
                 std::unique_ptr<LExpr> type = infer_type(arg);
-                Apps.push_front(std::move(arg));
-                std::unique_ptr<LVar> var_ = std::make_unique<LVar>(LVar::Type::Free, "temp");
-                std::unique_ptr<LBinder> var_info = std::make_unique<LBinder>("h!" + std::to_string(depth) + "_" + std::to_string(count), std::move(type), LBinder::Info::Explicit);
-                var_->solve(std::move(var_info));
-                TArgs.push_back(downcast_unique<LExpr>(var_));
-                count++;
+                if (is_a<LSort>(type)) {
+                    TArgs.push_back(std::move(arg));
+                }
+                else {
+                    has_have = true;
+                    Apps.push_front(std::move(arg));
+                    std::unique_ptr<LVar> var_ = std::make_unique<LVar>(LVar::Type::Free, "temp");
+                    std::unique_ptr<LBinder> var_info = std::make_unique<LBinder>("h!" + std::to_string(depth) + "_" + std::to_string(count), std::move(type), LBinder::Info::Explicit);
+                    var_->solve(std::move(var_info));
+                    TArgs.push_back(downcast_unique<LExpr>(var_));
+                    count++;
+                }
             }
         }
         std::unique_ptr<TExpr> parent = std::make_unique<TApply>(std::move(app->fn), std::move(TArgs));
