@@ -121,3 +121,6 @@ bool is_a(const std::unique_ptr<Base>& base_ptr) {
 
 // converts text string to allowable LaTeX form; for now, turns _ into "\_" and \ into "\\"
 std::string latexify(const std::string& str);
+
+// Returns a human-readable name, even for internal variables
+std::string get_var_name(std::string name);

@@ -11,10 +11,10 @@
 std::vector<std::unique_ptr<TExpr>> ir_conv(std::vector<std::unique_ptr<LExpr>>&& lean_ir) {
     std::vector<std::unique_ptr<TExpr>> out;
     for (auto& expr : lean_ir) {
-        std::unique_ptr<LExpr> converted = _ir_conv(std::move(expr));
+        std::unique_ptr<TExpr> converted = downcast_unique<TExpr>(_ir_conv(std::move(expr)));
         if (converted) {
-            log("Converted Lean IR expression to LaTeX IR expression: " + converted->to_string(), LogLevel::DEBUG);
-            out.push_back(std::move(downcast_unique<TExpr>(converted)));
+            log("Converted Lean IR expression to LaTeX IR expression:\n" + converted->to_tactic(), LogLevel::DEBUG);
+            out.push_back(std::move(converted));
         }
         else {
             log("Unable to convert Lean IR expression!", LogLevel::WARNING);
@@ -50,15 +50,17 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr, int depth) {
             }
             // Case 2 - arg is LLambda
             if (is_a<LLambda>(arg)) {
-                std::unique_ptr<LExpr> TArg = _ir_conv(std::move(arg), depth);
-                if (TArg) {
-                    if (auto tg = dynamic_cast<TGoal*>(TArg.get())) {
-                        if (lcount == 1) tg->param->name = "mpr";
-                        else if (lcount > 1) tg->param->name = "mp!" + std::to_string(lcount);
-                    }
-                    TArgs.push_back(std::move(TArg));
+                std::unique_ptr<LExpr> TArg = _ir_conv(arg->clone(), depth);
+                if (is_a<TIntro>(TArg)) {
+                    auto type = infer_type(arg);
+                    // todo: determine goal names based on type of LApp; currently hardcoded for Iff
+                    std::string goal_name = "mp";
+                    if (lcount == 1) goal_name = "mpr";
+                    else if (lcount > 1) goal_name = "mp!" + std::to_string(lcount);
+                    TArgs.push_back(std::make_unique<TGoal>(std::make_unique<LBinder>(goal_name, std::move(type), LBinder::Info::Explicit), downcast_unique<TExpr>(TArg)));
                 } else {
                     log("Conversion returned null for lambda arg", LogLevel::WARNING);
+                    TArgs.push_back(nullptr);
                 }
                 lcount++;
             }
@@ -94,12 +96,8 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr, int depth) {
         log("Conversion of LBinder expressions not supported", LogLevel::WARNING);
         return binder;
     } else if (auto lambda = downcast_unique<LLambda>(expr)) {
-        // Clone the lambda as an LExpr so we can pass a lvalue reference
-        std::unique_ptr<LExpr> lambda_as_lexpr = lambda->clone();
-        std::unique_ptr<LExpr> type = infer_type(lambda_as_lexpr);
         std::unique_ptr<LExpr> body = _ir_conv(std::move(lambda->body), depth);
-        std::unique_ptr<TExpr> intro = std::make_unique<TIntro>(std::move(lambda->binders), std::move(body));
-        return std::make_unique<TGoal>(std::make_unique<LBinder>("mp", std::move(type), LBinder::Info::Explicit), std::move(intro));
+        return std::make_unique<TIntro>(std::move(lambda->binders), downcast_unique<TExpr>(body));
     } else if (auto forall = downcast_unique<LForAll>(expr)) {
         log("Conversion of LForAll expressions not supported", LogLevel::WARNING);
         return forall;

@@ -14,10 +14,12 @@ It inherits basic functionality from LExpr (and includes some LExpr types as sub
 However, it is designed to be closer to Lean's "tactic mode", which builds up
 a proof expression in a way that is similar to a written proof.
 
-Also of note, the to_string won't exactly match Lean syntax, as
-there is more information that is of use that is usually implicit in Lean syntax.
+The to_tactic function is designed to emit a tactic mode proof in Lean.
 */
-struct TExpr : public LExpr {};
+struct TExpr : public LExpr {
+    static const int INDENT_SIZE = 2;
+    virtual std::string to_tactic(int depth = 0) const noexcept = 0;
+};
 
 /*
 THave is similar to the `have` tactic in Lean,
@@ -73,15 +75,38 @@ struct THave : public TExpr {
         }
         out += " := by ";
         if (value) {
-            out += "(" + value->to_string() + ")";
+            out += value->to_string();
         } else {
-            out += "(?nullptr)";
+            out += "?nullptr";
         }
         out += "; ";
         if (body) {
-            out += "(" + body->to_string() + ")";
+            out += body->to_string();
         } else {
-            out += "(?nullptr)";
+            out += "?nullptr";
+        }
+        return out;
+    }
+
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out;
+        out += std::string(depth, ' ') + "have " + name + " : ";
+        if (type) {
+            out += type->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        out += " := by\n";
+        if (value) {
+            out += value->to_tactic(depth+INDENT_SIZE);
+        } else {
+            out += std::string(depth+INDENT_SIZE, ' ') + "?nullptr";
+        }
+        out += "\n";
+        if (body) {
+            out += body->to_tactic(depth);
+        } else {
+            out += std::string(depth, ' ') + "?nullptr";
         }
         return out;
     }
@@ -94,8 +119,8 @@ It is similar to lambda expressions in term mode.
 */
 struct TIntro : public TExpr {
     std::vector<std::unique_ptr<LBinder>> params;
-    std::unique_ptr<LExpr> body;
-    TIntro(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> body) : params(std::move(params)), body(std::move(body)) {
+    std::unique_ptr<TExpr> body;
+    TIntro(std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<TExpr> body) : params(std::move(params)), body(std::move(body)) {
         for (auto& param : this->params) {
             if (param) {
                 param->parent = this; // the intro statement has the names from and ownership of the binders
@@ -111,7 +136,7 @@ struct TIntro : public TExpr {
         for (const auto& param : params) {
             param_clones.push_back(param ? downcast_unique<LBinder>(param->clone()) : nullptr);
         }
-        return std::make_unique<TIntro>(std::move(param_clones), body ? downcast_unique<LExpr>(body->clone()) : nullptr);
+        return std::make_unique<TIntro>(std::move(param_clones), body ? downcast_unique<TExpr>(body->clone()) : nullptr);
     }
     json to_json() const override {
         json jparams = json::array();
@@ -128,21 +153,58 @@ struct TIntro : public TExpr {
     };
     std::string to_string() const noexcept override {
         std::string out = "intro ";
-        for (const auto& param : params) {
-            if (param) {
-                out += param->to_string() + " ";
+        for (size_t i = 0; i < params.size(); i++) {
+            if (params.at(i)) {
+                out += get_var_name(params.at(i)->name) + " /- ";
+                if (params.at(i)->type) {
+                    out += params.at(i)->type->to_string();
+                } else {
+                    out += "?nullptr";
+                }
+                out += " -/";
             } else {
-                out += "(?nullptr) ";
+                out += "?nullptr";
+            }
+            if (i < params.size() - 1) {
+                out += " ";
             }
         }
         out += "; ";
         if (body) {
             out += body->to_string();
         } else {
-            out += "(?nullptr)";
+            out += "?nullptr";
         }
         return out;
     }
+
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out = std::string(depth, ' ') + "intro ";
+        for (size_t i = 0; i < params.size(); i++) {
+            if (params.at(i)) {
+                out += get_var_name(params.at(i)->name) + " /- ";
+                if (params.at(i)->type) {
+                    out += params.at(i)->type->to_string();
+                } else {
+                    out += "?nullptr";
+                }
+                out += " -/";
+            } else {
+                out += "?nullptr";
+            }
+            if (i < params.size() - 1) {
+                out += " ";
+            }
+        }
+        out += "\n";
+        if (body) {
+            out += body->to_tactic(depth);
+        } else {
+            out += "?nullptr";
+        }
+        return out;
+    }
+    
 };
 
 /*
@@ -175,15 +237,42 @@ struct TGoal : public TExpr {
     std::string to_string() const noexcept override {
         std::string out = "case ";
         if (param) {
-            out += param->to_string() + " ";
+            out += get_var_name(param->name) + " /- ";
+            if (param->type) {
+                out += param->type->to_string();
+            } else {
+                out += "?nullptr";
+            }
+            out += " -/ ";
         } else {
-            out += "(?nullptr) ";
+            out += "?nullptr";
         }
         out += "=> ";
         if (body) {
             out += body->to_string();
         } else {
-            out += "(?nullptr)";
+            out += "?nullptr";
+        }
+        return out;
+    }
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out = std::string(depth, ' ') + "case ";
+        if (param) {
+            out += get_var_name(param->name) + " /- ";
+            if (param->type) {
+                out += param->type->to_string();
+            } else {
+                out += "?nullptr";
+            }
+            out += " -/ ";
+        } else {
+            out += "?nullptr";
+        }
+        out += "=>\n";
+        if (body) {
+            out += body->to_tactic(depth+INDENT_SIZE);
+        } else {
+            out += std::string(depth+INDENT_SIZE, ' ') + "?nullptr";
         }
         return out;
     }
@@ -250,11 +339,42 @@ struct TApply : public TExpr {
             out += "?nullptr";
         }
         for (const auto& arg : args) {
-            out += " ";
-            if (arg) {
-                out += "(" + arg->to_string() + ")";
+            if (is_a<TExpr>(arg)) {
+                out += "; ";
+                if (arg) {
+                    out += arg->to_string();
+                } else {
+                    out += "?nullptr";
+                }
             } else {
-                out += "(?nullptr)";
+                out += " ";
+                if (arg) {
+                    out += "(" + arg->to_string() + ")";
+                } else {
+                    out += "(?nullptr)";
+                }
+            }
+        }
+        return out;
+    }
+
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out = std::string(depth, ' ') + (is_exact() ? "exact " : "apply ");
+        if (fn) {
+            out += fn->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        for (const auto& arg : args) {
+            if (auto t_arg = dynamic_cast<TExpr*>(arg.get())) {
+                out += "\n" + t_arg->to_tactic(depth);
+            } else {
+                out += " ";
+                if (arg) {
+                    out += "(" + arg->to_string() + ")";
+                } else {
+                    out += "(?nullptr)";
+                }
             }
         }
         return out;
@@ -290,6 +410,12 @@ struct TProof : public TExpr {
         if (!expr)
             return "?nullptr";
         return expr->to_string();
+    }
+
+    std::string to_tactic(int depth) const noexcept override {
+        if (!expr)
+            return std::string(depth, ' ') + "?nullptr";
+        return expr->to_tactic(depth);
     }
 };
 /* A theorem.
@@ -332,6 +458,22 @@ struct TTheorem : public TExpr {
             out += proof->to_string();
         } else {
             out += "?nullptr";
+        }
+        return out;
+    }
+
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out = std::string(depth, ' ') + "theorem " + name + " : ";
+        if (type) {
+            out += type->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        out += " := by\n";
+        if (proof) {
+            out += proof->to_tactic(depth+INDENT_SIZE);
+        } else {
+            out += std::string(depth+INDENT_SIZE, ' ') + "?nullptr";
         }
         return out;
     }

@@ -112,3 +112,24 @@ std::string latexify(const std::string &str) {
     return out;
 }
 
+
+// Returns a human-readable name, even for internal variables
+std::string get_var_name(std::string name) {
+    std::string _name = name;
+    // If the name ends with a dot followed by one or more digits (e.g. "x._@._internal._hyg.7"),
+    // treat it as inaccessible and replace with the user-friendly version "x!7".
+    auto pos = _name.rfind('.');
+    if (pos != std::string::npos && pos + 1 < _name.size()) {
+        bool all_digits = true;
+        for (size_t i = pos + 1; i < _name.size(); ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(_name[i]))) {
+                all_digits = false;
+                break;
+            }
+        }
+        if (all_digits) {
+            _name = _name.substr(0, _name.find('.')) + "!" + _name.substr(pos+1);
+        }
+    }
+    return _name;
+};

@@ -105,8 +105,8 @@ inline void substitute_binder(std::string name, LExpr* value, std::unique_ptr<LE
     recursive_apply_l(expr, check);
 }
 
-// Infer the type of an expression
-// todo: add a second pass to convert LLambdas into LForAlls
+// Type inference
+// First pass: does main type inference logic
 inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
     if (auto var = downcast_clone<LVar>(expr)) {
         if (!var->type) {
@@ -176,7 +176,7 @@ inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
         // all of the applications are unfolded properly
         std::unique_ptr<LExpr> type = infer_type(lam->body);
         for (int i = lam->binders.size()-1; i >= 0; i--) {
-            type = std::make_unique<LLambda>(downcast_unique<LBinder>(lam->binders[i]->clone()), std::move(type));
+            type = std::make_unique<LForAll>(downcast_unique<LBinder>(lam->binders[i]->clone()), std::move(type));
         }
         return type;
     } else if (auto fa = downcast_clone<LForAll>(expr)) {
