@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <functional>
 #include "utility/json.hpp"
+#include "ir/lean.hpp"
 using json = nlohmann::json;
 
 class Loader;
@@ -30,6 +31,11 @@ public:
     void set_option(const std::string& option, const std::string& value) noexcept;
     bool is_tampered(const std::string& option);
     void parse_argument(int& argp, int argc, char** argv);
+
+    // Stores a global mapping of constant names to their types
+    // This is used for constant resolution outside of IR conversion, e.g. in infer_type
+    // todo: make getter and setter methods for this
+    std::unordered_map<std::string, LConst::Meta> const_sym;
 };
 
 // Global loader instance

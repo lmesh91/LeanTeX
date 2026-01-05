@@ -3,6 +3,7 @@
 #include "utility/misc.hpp"
 #include "ir/lean.hpp"
 #include "ir/latex.hpp"
+#include "loader.hpp"
 #include <functional>
 
 // Downcasts and clones an LExpr object
@@ -119,8 +120,13 @@ inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
         return std::make_unique<LSort>(std::make_unique<LLevel>(LLevel::Type::Succ, sort->level->clone()));
     } else if (auto const_expr = downcast_clone<LConst>(expr)) {
         if (!const_expr->solved) {
-            log("Cannot infer type of unsolved constant "+const_expr->to_string(), LogLevel::WARNING);
-            return nullptr;
+            // Last ditch effort: try and solve from global constant mapping
+            if (LOADER.const_sym.contains(const_expr->name)) {
+                const_expr->solve(LOADER.const_sym[const_expr->name]);
+            } else {
+                log("Cannot infer type of unsolved constant "+const_expr->to_string(), LogLevel::WARNING);
+                return nullptr;
+            }
         }
         std::unique_ptr<LExpr> type = const_expr->meta.expr->clone();
         // Apply universe variables to the type
@@ -137,10 +143,16 @@ inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
             return std::make_unique<LConst>("String", std::vector<std::unique_ptr<LLevel>>{});
         }
     } else if (auto app = downcast_clone<LApp>(expr)) {
+        log("Inferring type of expression: "+expr->to_string(), LogLevel::DEBUG);
         // For each argument that is applied, we go one step further inside
         // the LForAll associated with this, and substitute any values of bound variables
         // todo: resolve universes of substituted types
         auto type_generic = infer_type(app->fn);
+        while (auto app2 = downcast_raw<LApp>(type_generic)) {
+            // Some functions return functions, so we need to unwrap those first
+            type_generic = infer_type(app2->fn);
+        }
+        log("Fn type inferred as: "+(type_generic ? type_generic->to_string() : "nullptr"), LogLevel::DEBUG);
         if (auto type = downcast_unique<LForAll>(type_generic)) {
             for (auto& arg : app->args) {
                 if (type->binders.size() == 0) {

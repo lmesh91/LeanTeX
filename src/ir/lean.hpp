@@ -375,6 +375,10 @@ struct LConst : public LExpr {
     struct Meta {
         std::vector<std::string> levels;
         std::unique_ptr<LExpr> expr;
+
+        Meta clone() const {
+            return {levels, expr ? expr->clone() : nullptr};
+        }
     };
     std::string name;
     std::vector<std::unique_ptr<LLevel>> levels;

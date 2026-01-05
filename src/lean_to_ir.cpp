@@ -259,6 +259,9 @@ std::unique_ptr<LTheorem> parse_theorem(const json& elab, const json& sym) {
             levels.push_back(kind_to_string(l));
         }
         type_sym[kind_to_string(s.at("name"))] = {std::move(levels), parse_and_solve(s.at("typeExpr"))};
+        if (!LOADER.const_sym.contains(kind_to_string(s.at("name")))) {
+            LOADER.const_sym[kind_to_string(s.at("name"))] = type_sym[kind_to_string(s.at("name"))].clone();
+        }
     }
     for (const auto& s : this_sym.at("valueReferences")) {
         std::vector<std::string> levels;
@@ -266,6 +269,9 @@ std::unique_ptr<LTheorem> parse_theorem(const json& elab, const json& sym) {
             levels.push_back(kind_to_string(l));
         }
         value_sym[kind_to_string(s.at("name"))] = {std::move(levels), parse_and_solve(s.at("typeExpr"))};
+        if (!LOADER.const_sym.contains(kind_to_string(s.at("name")))) {
+            LOADER.const_sym[kind_to_string(s.at("name"))] = value_sym[kind_to_string(s.at("name"))].clone();
+        }
     }
 
     // Parse each parameter and the proof type
