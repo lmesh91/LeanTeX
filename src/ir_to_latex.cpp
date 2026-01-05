@@ -42,30 +42,24 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr, int depth) {
         std::deque<std::unique_ptr<LExpr>> Apps;
         bool has_have = false;
         int count = 0;
-        int lcount = 0;
+        int tcount = 0;
+        std::unique_ptr<LForAll> fn_type = downcast_unique<LForAll>(infer_type(app->fn));
         for (auto& arg : LArgs) {
-            // Case 1 - arg is LVar
-            if (is_a<LVar>(arg)) {
-                TArgs.push_back(std::move(arg));
-            }
             // Case 2 - arg is LLambda
             if (is_a<LLambda>(arg)) {
                 std::unique_ptr<LExpr> TArg = _ir_conv(arg->clone(), depth);
                 if (is_a<TIntro>(TArg)) {
                     auto type = infer_type(arg);
                     // todo: determine goal names based on type of LApp; currently hardcoded for Iff
-                    std::string goal_name = "mp";
-                    if (lcount == 1) goal_name = "mpr";
-                    else if (lcount > 1) goal_name = "mp!" + std::to_string(lcount);
+                    std::string goal_name = fn_type->binders[tcount]->name;
                     TArgs.push_back(std::make_unique<TGoal>(std::make_unique<LBinder>(goal_name, std::move(type), LBinder::Info::Explicit), downcast_unique<TExpr>(TArg)));
                 } else {
                     log("Conversion returned null for lambda arg", LogLevel::WARNING);
                     TArgs.push_back(nullptr);
                 }
-                lcount++;
             }
             // Case 3 - arg is LApp
-            if (is_a<LApp>(arg)) {
+            else if (is_a<LApp>(arg)) {
                 std::unique_ptr<LExpr> type = infer_type(arg);
                 if (is_a<LSort>(type)) {
                     TArgs.push_back(std::move(arg));
@@ -80,6 +74,11 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr, int depth) {
                     count++;
                 }
             }
+            // Case 1 - arg is LVar or other
+            else {
+                TArgs.push_back(std::move(arg));
+            }
+            tcount++;
         }
         std::unique_ptr<TExpr> parent = std::make_unique<TApply>(std::move(app->fn), std::move(TArgs));
         if (!has_have) {
@@ -109,7 +108,9 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr, int depth) {
             return std::make_unique<THave>(let->name, std::move(let->type), std::move(intro), std::move(body));
         }
         if (is_a<LApp>(let->value)) {
-            return _ir_conv(std::move(let->value));
+            std::unique_ptr<TExpr> body = downcast_unique<TExpr>(_ir_conv(std::move(let->body), depth));
+            std::unique_ptr<TExpr> val = downcast_unique<TExpr>(_ir_conv(std::move(let->value), depth));
+            return std::make_unique<THave>(let->name, std::move(let->type), std::move(val), std::move(body));
         }
         log("Conversion of this LLet expression not supported", LogLevel::WARNING);
         return let;
@@ -122,7 +123,7 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr, int depth) {
         return std::make_unique<TProof>(downcast_unique<TExpr>(_ir_conv(std::move(term_proof->expr), depth)));
     } else if (auto theorem = downcast_unique<LTheorem>(expr)) {
         std::unique_ptr<TProof> proof = downcast_unique<TProof>(_ir_conv(std::move(theorem->proof), depth));
-        return std::make_unique<TTheorem>(theorem->name, std::move(theorem->type), std::move(proof));
+        return std::make_unique<TTheorem>(theorem->name, std::move(theorem->params), std::move(theorem->type), std::move(proof));
     } else {
         log("Unable to convert unknown expression "+expr->to_string()+" to LaTeX IR", LogLevel::WARNING);
         return expr;
