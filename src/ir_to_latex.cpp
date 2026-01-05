@@ -41,18 +41,26 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr, int depth) {
         std::vector<std::unique_ptr<LExpr>> TArgs;
         std::deque<std::unique_ptr<LExpr>> Apps;
         bool has_have = false;
+        bool reached_case = false;
         int count = 0;
         int tcount = 0;
         std::unique_ptr<LForAll> fn_type = downcast_unique<LForAll>(infer_type(app->fn));
+        int argcount = LArgs.size();
         for (auto& arg : LArgs) {
             // Case 2 - arg is LLambda
             if (is_a<LLambda>(arg)) {
+                reached_case = true;
                 std::unique_ptr<LExpr> TArg = _ir_conv(arg->clone(), depth);
                 if (is_a<TIntro>(TArg)) {
                     auto type = infer_type(arg);
                     // todo: determine goal names based on type of LApp; currently hardcoded for Iff
-                    std::string goal_name = fn_type->binders[tcount]->name;
-                    TArgs.push_back(std::make_unique<TGoal>(std::make_unique<LBinder>(goal_name, std::move(type), LBinder::Info::Explicit), downcast_unique<TExpr>(TArg)));
+                    if (argcount == 1) {
+                        TArgs.push_back(std::move(TArg));
+                    }
+                    else {
+                        std::string goal_name = fn_type->binders[tcount]->name;
+                        TArgs.push_back(std::make_unique<TGoal>(std::make_unique<LBinder>(goal_name, std::move(type), LBinder::Info::Explicit), downcast_unique<TExpr>(TArg)));
+                    }
                 } else {
                     log("Conversion returned null for lambda arg", LogLevel::WARNING);
                     TArgs.push_back(nullptr);
@@ -76,7 +84,17 @@ std::unique_ptr<LExpr> _ir_conv(std::unique_ptr<LExpr> expr, int depth) {
             }
             // Case 1 - arg is LVar or other
             else {
-                TArgs.push_back(std::move(arg));
+                if (!reached_case) {
+                    argcount--;
+                    TArgs.push_back(std::move(arg));
+                }
+                else { // case solved exactly
+                    auto type = infer_type(arg);
+                    std::string goal_name = fn_type->binders[tcount]->name;
+                    std::vector<std::unique_ptr<LExpr>> LArgs;
+                    std::unique_ptr<TApply> fn = std::make_unique<TApply>(std::move(arg), std::move(LArgs));
+                    TArgs.push_back(std::make_unique<TGoal>(std::make_unique<LBinder>(goal_name, std::move(type), LBinder::Info::Explicit), std::move(fn)));
+                }
             }
             tcount++;
         }

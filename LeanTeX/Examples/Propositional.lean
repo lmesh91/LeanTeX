@@ -1,5 +1,5 @@
 variable (p q r : Prop)
-open Classical
+
 -- commutativity of ∧ and ∨
 theorem comm_and : p ∧ q ↔ q ∧ p :=
     Iff.intro
@@ -7,10 +7,6 @@ theorem comm_and : p ∧ q ↔ q ∧ p :=
         show q ∧ p from And.intro h.right h.left)
         (fun h : q ∧ p =>
         show p ∧ q from And.intro h.right h.left)
-theorem comm_and_v2 : p ∧ q ↔ q ∧ p :=
-    have m (a : Prop) (b : Prop) : a ∧ b → b ∧ a :=
-        fun h : a ∧ b => And.intro h.right h.left;
-    Iff.intro (m p q) (m q p)
 theorem comm_or : p ∨ q ↔ q ∨ p :=
     Iff.intro
         (fun h : p ∨ q =>
@@ -167,6 +163,8 @@ theorem contrapositive : (p → q) → (¬q → ¬p) :=
 
 theorem contrapositive_2 : (p → q) → (¬q → ¬p) :=
     fun h hnq hp => hnq (h hp)
+
+open Classical
 
 theorem implication_distributes_over_or : (p → q ∨ r) → ((p → q) ∨ (p → r)) :=
     fun h : p → q ∨ r =>
