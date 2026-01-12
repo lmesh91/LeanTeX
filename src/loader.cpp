@@ -7,8 +7,9 @@
 #include <functional>
 #include "loader.hpp"
 #include "utility/misc.hpp"
-#include "lean_to_ir.hpp"
-#include "ir_to_latex.hpp"
+#include "stage1.hpp"
+#include "stage2.hpp"
+#include "stage3.hpp"
 #include "ir/latex.hpp"
 
 Loader LOADER;
@@ -55,6 +56,7 @@ void handle_help(int& argp, int argc, char** argv, Loader& l) {
               << "  leantex <file> [options]\n"                                       << std::endl
               << "Options:"                                                           << std::endl
               << "  -j, --jixia        Specify a path to the Jixia binary."           << std::endl
+              << "  -l, --latex        Specify a path to the LaTeX compiler."         << std::endl
               << "  -w, --working-dir  Specify the working directory."                << std::endl
               << "  -h, --help         Display this help message."                    << std::endl
               << "  -i, --ini          Specify an INI configuration file."            << std::endl
@@ -66,6 +68,8 @@ void handle_help(int& argp, int argc, char** argv, Loader& l) {
 const std::unordered_map<std::string, CLIParser> Loader::CLI_OPTIONS = {
     {"-j", handle_single("Jixia")},
     {"--jixia", handle_single("Jixia")},
+    {"-l", handle_single("LaTeX")},
+    {"--latex", handle_single("LaTeX")},
     {"-w", handle_single("WorkingDir")},
     {"--working-dir", handle_single("WorkingDir")},
     {"-i", handle_single("_IniFile")},
@@ -237,4 +241,6 @@ void Loader::convert() {
     // Convert to LaTeX IR
     log("Converting Lean IR to LaTeX IR");
     std::vector<std::unique_ptr<TExpr>> latex_ir = ir_conv(std::move(lean_ir));
+    log("Converting LaTeX IR to a LaTeX file");
+    output_latex(latex_conv(std::move(latex_ir)));
 }
