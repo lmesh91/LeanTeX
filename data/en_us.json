@@ -27,6 +27,14 @@
       "em" : {
         "math": "<.out>",
         "text": "We have <.out> by the principle of excluded middle."
+      },
+      "byCases" : {
+        "text": "Because <hpq> and <hnpq>, we have <.out> by the principle of excluded middle.",
+        "apply": "If we show <hpq> and <hnpq>, we would have <.out> by the principle of excluded middle. <@hpq> <@hnpq>"
+      },
+      "byContradiction" : {
+        "text": "Because <h>, <.out> by contradiction.",
+        "apply": "If we show <h>, we have <.out> by contradiction. <@h>"
       }
     }
   },
