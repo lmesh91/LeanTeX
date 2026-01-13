@@ -163,6 +163,7 @@ bool Loader::initialize() {
     // Create the working directories
     std::filesystem::create_directories(get_option("WorkingDir")+"/jixia");
     std::filesystem::create_directories(get_option("WorkingDir")+"/temp");
+    std::filesystem::create_directories(get_option("WorkingDir")+"/out");
     return true;
 }
 

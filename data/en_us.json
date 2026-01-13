@@ -1,0 +1,12 @@
+{
+  "And": {
+    "math": "<@a> \\land <@b>",
+    "text": "<a> and <b>",
+    "children": {
+     "intro": {
+      "text": "Because <left> and <right>, it follows that <.out> by the definition of and.",
+      "apply": "To show that <.out>, we must show that <left> and <right> by the definition of and. <@left> <@right>"
+     }
+    }
+  }
+}

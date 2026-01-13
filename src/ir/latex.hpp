@@ -7,15 +7,6 @@
 #include <vector>
 #include <utility>
 #include "ir/lean.hpp"
-
-/*
-TContext is a structure for storing the context necessary for translation - the name, type, and on occasion value of statements.
-*/
-struct TContext {
-    std::string name;
-    std::unique_ptr<LExpr> type;
-    std::unique_ptr<LExpr> value;
-};
 /*
 TExpr is a base class for Latex IR expressions.
 It inherits basic functionality from LExpr (and includes some LExpr types as sub-expressions).
@@ -27,7 +18,6 @@ The to_tactic function is designed to emit a tactic mode proof in Lean.
 struct TExpr : public LExpr {
     static const int INDENT_SIZE = 2;
     virtual std::string to_tactic(int depth = 0) const noexcept = 0;
-    virtual std::string to_latex(std::vector<TContext> context) const = 0;
 };
 
 /*
@@ -213,7 +203,6 @@ struct TIntro : public TExpr {
         }
         return out;
     }
-    
 };
 
 /*
@@ -517,13 +506,6 @@ struct TTheorem : public TExpr {
         } else {
             out += std::string(depth+INDENT_SIZE, ' ') + "?nullptr";
         }
-        return out;
-    }
-    std::string to_latex(std::vector<TContext> context) const override {
-        std::string name_ = latexify(name);
-        std::string type_ = type->to_latex(context);
-        std::string proof_ = proof->to_latex(context);
-        std::string out = "\\begin{theorem}[" + name_ + "]\n" + type_ + "\n\\end{theorem}\n" + proof_;
         return out;
     }
 };
