@@ -11,10 +11,18 @@ template <typename Derived>
 std::unique_ptr<Derived> downcast_clone(std::unique_ptr<LExpr>& base_ptr) {
     return downcast_unique<Derived>(base_ptr->clone());
 }
+template <typename Derived>
+std::unique_ptr<Derived> downcast_clone(std::unique_ptr<TExpr>& base_ptr) {
+    return downcast_unique<Derived>(base_ptr->clone());
+}
 
 // Downcasts an LExpr object into a raw pointer
 template <typename Derived>
 Derived* downcast_raw(std::unique_ptr<LExpr>& base_ptr) {
+    return dynamic_cast<Derived*>(base_ptr.get());
+}
+template <typename Derived>
+Derived* downcast_raw(std::unique_ptr<TExpr>& base_ptr) {
     return dynamic_cast<Derived*>(base_ptr.get());
 }
 

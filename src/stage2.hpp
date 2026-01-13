@@ -1,4 +1,4 @@
-// ir_to_latex.hpp - Conversion from Lean IR to LaTeX IR
+// stage2.hpp - Conversion from Lean IR to LaTeX IR
 #pragma once
 #include "ir/lean.hpp"
 #include "ir/latex.hpp"

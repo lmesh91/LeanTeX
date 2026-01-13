@@ -7,7 +7,6 @@
 #include <vector>
 #include <utility>
 #include "ir/lean.hpp"
-
 /*
 TExpr is a base class for Latex IR expressions.
 It inherits basic functionality from LExpr (and includes some LExpr types as sub-expressions).
@@ -204,7 +203,6 @@ struct TIntro : public TExpr {
         }
         return out;
     }
-    
 };
 
 /*

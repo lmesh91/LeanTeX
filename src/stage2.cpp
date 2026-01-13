@@ -1,10 +1,8 @@
-// ir_to_latex.hpp - Conversion from Lean IR to LaTeX IR
-#include "ir_to_latex.hpp"
+// stage2.cpp - Conversion from Lean IR to LaTeX IR
+#include "stage2.hpp"
 #include "ir/utils.hpp"
 #include <deque>
 #include <forward_list>
-
-#include "ir/utils.hpp"
 
 // Converts a vector of Lean IR expressions to LaTeX IR expressions
 // Note that the original object is invalidated, as some LExpr may be moved over

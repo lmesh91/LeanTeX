@@ -1,4 +1,4 @@
-// lean_to_ir.hpp - Conversion from Lean Elaboration to Lean IR
+// stage1.hpp - Conversion from Lean Elaboration to Lean IR
 #pragma once
 #include "ir/lean.hpp"
 #include <utility>

@@ -1,6 +1,6 @@
-// lean_to_ir.cpp - Conversion from Lean AST/Elaboration to Lean IR
+// stage1.cpp - Conversion from Lean AST/Elaboration to Lean IR
 #include "loader.hpp"
-#include "lean_to_ir.hpp"
+#include "stage1.hpp"
 #include "utility/misc.hpp"
 #include "ir/utils.hpp"
 
