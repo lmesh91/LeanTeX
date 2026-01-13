@@ -6,7 +6,102 @@
      "intro": {
       "text": "Because <left> and <right>, it follows that <.out> by the definition of and.",
       "apply": "To show that <.out>, we must show that <left> and <right> by the definition of and. <@left> <@right>"
+     },
+     "left": {
+        "text": "Because <self>, it follows that <.out> by the definition of and.",
+        "apply": "If we show that <self>, we can show that <.out> by the definition of and. <@self>"
+     },
+     "right": {
+        "text": "Because <self>, it follows that <.out> by the definition of and.",
+        "apply": "If we show that <self>, we can show that <.out> by the definition of and. <@self>"
      }
+
     }
+  },
+  "absurd": {
+    "text": "Because <h_1> and <h_2>, anything follows, including <.out>, by the principle of explosion.",
+    "apply": "If we show that <h_1> and <h_2>, anything follows, including <.out>, by the principle of explosion. <@h_1> <@h_2>"
+  },
+  "Classical": {
+    "children": {
+      "em" : {
+        "math": "<.out>",
+        "text": "We have <.out> by the principle of excluded middle."
+      }
+    }
+  },
+  "False": {
+    "math": "False",
+    "text": "False",
+    "children": {
+      "elim": {
+        "text": "Because <h> is False, anything follows, including <.out>, by the principle of explosion.",
+        "apply": "If we show that <h> is False, anything follows, including <.out>, by the principle of explosion. <@h>"
+      }
+    }
+  },
+  "Iff": {
+    "math": "<a> \\iff <b>",
+    "text": "<a> if and only if <b>",
+    "children": {
+      "intro": {
+        "text": "We have shown <mp> and <mpr>, and thus <.out> follows by the definition of a biconditional statement.",
+        "apply": "By the definition of a biconditional statement, we must show that <mp> and <mpr> to show <.out>. <@mp> <@mpr>"
+      },
+      "mp": {
+        "text": "Because <self>, it follows that <.out> by the definition of a biconditional statement.",
+        "apply": "If we can show that <self>, if follows that <.out> by the definition of a biconditional statement. <@self>"
+      },
+      "mpr": {
+        "text": "Because <self>, it follows that <.out> by the definition of a biconditional statement.",
+        "apply": "If we can show that <self>, if follows that <.out> by the definition of a biconditional statement. <@self>"
+      }
+    }
+  },
+  "Not": {
+    "math": "\\neg <a>",
+    "text": "Not <a>"
+  },
+  "Or": {
+    "math": "<a> \\lor <b>",
+    "text": "<a> and <b>",
+    "children": {
+      "inl": {
+        "text": "Because <h>, it follows that <.out> by the definition of or.",
+        "apply": "If we show that <h>, we can show that <.out> by the definition of or. <@h>"
+      },
+      "intro_left": {
+        "text": "Because <h>, it follows that <.out> by the definition of or.",
+        "apply": "If we show that <h>, we can show that <.out> by the definition of or. <@h>"
+      },
+      "inr": {
+        "text": "Because <h>, it follows that <.out> by the definition of or.",
+        "apply": "If we show that <h>, we can show that <.out> by the definition of or. <@h>"
+      },
+      "intro_right": {
+        "text": "Because <h>, it follows that <.out> by the definition of or.",
+        "apply": "If we show that <h>, we can show that <.out> by the definition of or. <@h>"
+      },
+      "elim": {
+        "text": "We have shown <left> and <right>, and thus given <h>, <.out> follows by the definition of or.",
+        "apply": "Given <h>, to show that <.out>, we must show that <left> and <right> by the definition of or. <@left> <@right>"
+      }
+    }
+  },
+  "sorry": {
+    "text": "placeholder"
+  },
+  "True": {
+    "math": "True",
+    "text": "True",
+    "children": {
+      "intro": {
+        "text": "We have True by the defintion of True."
+      }
+    }
+  },
+  "->": {
+    "math": "<a> \\implies <b>",
+    "text": "<a> implies <b>"
   }
 }
