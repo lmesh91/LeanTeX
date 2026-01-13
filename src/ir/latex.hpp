@@ -17,7 +17,7 @@ a proof expression in a way that is similar to a written proof.
 The to_tactic function is designed to emit a tactic mode proof in Lean.
 */
 struct TExpr : public LExpr {
-    static const int INDENT_SIZE = 2;
+    static const int INDENT_SIZE = 2; // size of indentation when pretty printing
     virtual std::string to_tactic(int depth = 0) const noexcept = 0;
 };
 
