@@ -1,6 +1,6 @@
 {
   "And": {
-    "math": "<@a> \\land <@b>",
+    "math": "<a> \\land <b>",
     "text": "<a> and <b>",
     "children": {
      "intro": {
