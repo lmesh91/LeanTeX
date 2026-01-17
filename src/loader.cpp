@@ -61,7 +61,8 @@ void handle_help(int& argp, int argc, char** argv, Loader& l) {
               << "  -h, --help         Display this help message."                    << std::endl
               << "  -i, --ini          Specify an INI configuration file."            << std::endl
               << "  -v, --verbose      Set verbose logging."                          << std::endl
-              << "  -q, --quiet        Set quiet logging."                            << std::endl;
+              << "  -q, --quiet        Set quiet logging."                            << std::endl
+              << "  --language         Specify language used for translation."        << std::endl;
     l.set_option("_Exit", "True");
 }
 
@@ -70,6 +71,7 @@ const std::unordered_map<std::string, CLIParser> Loader::CLI_OPTIONS = {
     {"--jixia", handle_single("Jixia")},
     {"-l", handle_single("LaTeX")},
     {"--latex", handle_single("LaTeX")},
+    {"--language", handle_single("Language")},
     {"-w", handle_single("WorkingDir")},
     {"--working-dir", handle_single("WorkingDir")},
     {"-i", handle_single("_IniFile")},
@@ -105,6 +107,7 @@ Loader::Loader() {
     // Initialize all options with default values
     options["WorkingDir"] = ".leantex";
     options["_IniFile"] = "leantex.ini";
+    options["Language"] = "en_us";
 }
 
 void Loader::load_ini() {
@@ -164,6 +167,8 @@ bool Loader::initialize() {
     std::filesystem::create_directories(get_option("WorkingDir")+"/jixia");
     std::filesystem::create_directories(get_option("WorkingDir")+"/temp");
     std::filesystem::create_directories(get_option("WorkingDir")+"/out");
+    // Load translation data
+    translation_data = get_json("data/" + get_option("Language") + ".json");
     return true;
 }
 

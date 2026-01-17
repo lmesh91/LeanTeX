@@ -6,43 +6,34 @@
 #include "ir/utils.hpp"
 #include <fstream>
 
-/*
-VarContext is a structure for storing the context necessary for translation:
-the name, type, and on occasion value of statements.
-*/
-struct VarContext {
-    std::string name;
-    std::unique_ptr<LExpr> type;
-    std::unique_ptr<LExpr> value;
-};
+using ExprMap = std::unordered_map<std::string, std::unique_ptr<LExpr>>;
 
-/*
-ConvMode is an enumeration for the current conversion mode from LaTeX IR to LaTeX string.
-*/
-enum class ConvMode {
-    Text, // default mode, outputs normal text
-    Math, // math mode, outputs LaTeX math expressions
-    Apply, // alternate translation when inside TApply
-    Intro, // alternate translation when inside TIntro
-};
+// Utility functions for translation
+json translation_data(std::string name, json& translation_json = LOADER.translation_data) {
+    if (name.find('.') == std::string::npos) {
+        if (!translation_json.contains(name)) {
+            throw std::runtime_error("No translation data found for constant " + name);
+        }
+        return translation_json.at(name);
+    } else {
+        size_t dot_pos = name.find('.');
+        if (!translation_json.contains(name.substr(0, dot_pos))) {
+            throw std::runtime_error("No translation data found for constant " + name);
+        } else {
+            return translation_data(name.substr(dot_pos + 1), translation_json.at(name.substr(0, dot_pos)).at("children"));
+        }
+    }
+}
 
-/*
-Context is a structure for storing the overall context during LaTeX conversion.
-*/
-struct Context {
-    std::vector<VarContext> vars;
-    ConvMode mode = ConvMode::Text;
-};
+std::string translate(std::string name, ExprMap& args, Context& context) {
+    return translation_data(name).at("text").get<std::string>();
+}
 
 std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
     // LExpr types
     if (auto const_expr = downcast_raw<LConst>(expr)) {
-        // todo read from JSON
-        if (const_expr->name == "True.intro") {
-            return "True follows from the definition of true.";
-        } else {
-            return latexify(const_expr->name);
-        }
+        ExprMap args = {};
+        return translate(const_expr->name, args, context);
     }
     // TExpr types
     else if (auto app = downcast_raw<TApply>(expr)) {

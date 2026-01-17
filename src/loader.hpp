@@ -36,6 +36,7 @@ public:
     // This is used for constant resolution outside of IR conversion, e.g. in infer_type
     // todo: make getter and setter methods for this
     std::unordered_map<std::string, LConst::Meta> const_sym;
+    json translation_data;
 };
 
 // Global loader instance

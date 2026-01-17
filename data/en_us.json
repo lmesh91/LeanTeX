@@ -72,7 +72,7 @@
   },
   "Or": {
     "math": "<a> \\lor <b>",
-    "text": "<a> and <b>",
+    "text": "<a> or <b>",
     "children": {
       "inl": {
         "text": "Because <h>, it follows that <.out> by the definition of or.",
