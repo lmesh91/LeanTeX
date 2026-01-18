@@ -12,13 +12,15 @@ using ExprMap = std::unordered_map<std::string, VarContext>;
 json translation_data(std::string name, json& translation_json = LOADER.translation_data) {
     if (name.find('.') == std::string::npos) {
         if (!translation_json.contains(name)) {
-            throw std::runtime_error("No translation data found for constant " + name);
+            log("No translation data found for constant " + name, LogLevel::WARNING);
+            return json::object();
         }
         return translation_json.at(name);
     } else {
         size_t dot_pos = name.find('.');
         if (!translation_json.contains(name.substr(0, dot_pos))) {
-            throw std::runtime_error("No translation data found for constant " + name);
+            log("No translation data found for constant " + name, LogLevel::WARNING);
+            return json::object();
         } else {
             return translation_data(name.substr(dot_pos + 1), translation_json.at(name.substr(0, dot_pos)).at("children"));
         }
@@ -41,18 +43,37 @@ std::string translation_mode(ConvMode mode) {
 }
 
 VarContext get_vc(std::unique_ptr<LExpr>& expr) {
-    if (is_a<TExpr>(expr) || is_a<LSort>(infer_type(expr))) { // For base types, we want the value in place of the type
+    auto expr_type = infer_type(expr);
+    if (!expr_type || is_a<LSort>(expr_type)) { // For base types, we want the value in place of the type
         return {.type = expr->clone(), .value = expr->clone()};
     } else {
-        return {.type = infer_type(expr), .value = expr->clone()};
+        return {.type = std::move(expr_type), .value = expr->clone()};
     }
 }
 
 std::string translate(std::string name, ExprMap& args, Context& context) {
     std::string translation_str;
+    // Fallback order: specific -> text. Some modes fall back to math first.
     if (!translation_data(name).contains(translation_mode(context.mode))) {
-        translation_str = translation_data(name).at("text");
-        context.mode = ConvMode::Text;
+        if (context.mode == ConvMode::Intro && translation_data(name).contains("math")) {
+            translation_str = translation_data(name).at("math");
+            context.mode = ConvMode::Math;
+        } else if (translation_data(name).contains("text")) {
+            translation_str = translation_data(name).at("text");
+            context.mode = ConvMode::Text;
+        } else {
+            log("No suitable translation found for " + name, LogLevel::WARNING);
+            // Generic fallback
+            std::string out = "\\mathrm{" + latexify(name) + "}(";
+            for (auto& [arg_name, vc] : args) {
+                out += latexify(arg_name) + "=" + to_latex(std::move(vc.type ? vc.type : vc.value), context) + ", ";
+            }
+            if (args.size() > 0) {
+                out = out.substr(0, out.length() - 2); // Remove trailing comma and space
+            }
+            out += ")";
+            return out;
+        }
     } else {
         translation_str = translation_data(name).at(translation_mode(context.mode));
     }
@@ -98,11 +119,15 @@ std::string translate(std::string name, ExprMap& args, Context& context) {
             }
             end_var_name -= 2; // Adjust to exclude mode indicator
         }
+        context.value = value;
         std::string arg_name = translation_str.substr(start_var_name, end_var_name - start_var_name + 1);
+        std::string arg_latex;
         if (args.find(arg_name) == args.end()) {
-            throw std::runtime_error("Argument " + arg_name + " not found for translation of " + name);
+            log("Argument " + arg_name + " not found for translation of " + name, LogLevel::WARNING);
+            arg_latex = "\\langle " + arg_name + "?\\rangle";
+        } else {
+            arg_latex = to_latex(std::move(value ? args[arg_name].value : args[arg_name].type), context);
         }
-        std::string arg_latex = to_latex(std::move(value ? args[arg_name].value : args[arg_name].type), context);
         if ((context.mode == ConvMode::Math) ^ (prev_mode == ConvMode::Math)) {
             arg_latex = "$" + arg_latex + "$";
         }
@@ -120,6 +145,9 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
     if (auto lit = downcast_raw<LLiteral>(expr)) {
         if (lit->type == LLiteral::Type::String) {
             context.mode = ConvMode::Text;
+            if (lit->str_value.front() == '$') {
+                return lit->str_value; // Raw LaTeX string from mid-conversion
+            }
             return latexify(lit->str_value);
         } else if (lit->type == LLiteral::Type::Nat) {
             context.mode = ConvMode::Math;
@@ -133,7 +161,10 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
         return translate(const_expr->name, args, context);
     }
     else if (auto var = downcast_raw<LVar>(expr)) {
-        // Always use math mode for variables
+        // Always use math mode for named variables
+        if (context.value && var->solved) {
+            return to_latex(var->type->clone(), context);
+        }
         if (context.mode != ConvMode::Math) {
             return "$" + latexify(var->name) + "$";
         }
@@ -155,13 +186,20 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
         // The infer_type code for LApp may be helpful in debugging this later
         ExprMap args;
         auto f_type = downcast_unique<LForAll>(infer_type(app->fn));
-        for (size_t i = 0; i < app->args.size(); ++i) {
-            args[f_type->binders[i]->name] = get_vc(app->args[i]);
+        if (f_type) {
+            for (size_t i = 0; (i < app->args.size() && i < f_type->binders.size()); ++i) {
+                args[f_type->binders[i]->name] = get_vc(app->args[i]);
+            }
         }
         auto app_type = infer_type(expr);
-        args[".out"] = get_vc(app_type);
+        if (app_type) {
+            args[".out"] = get_vc(app_type);
+        }
         auto fn = app->fn->clone();
         while (!is_a<LConst>(fn)) {
+            if (is_a<LSort>(fn)) {
+                return translate(fn->to_string(), args, context);;
+            }
             fn = infer_type(fn);
             log("Unwrapping LApp function to find LConst: " + fn->to_string(), LogLevel::DEBUG);
         }
@@ -181,8 +219,19 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
         }
         if (!app->is_exact()) {
             context.mode = ConvMode::Apply;
+            return to_latex(std::make_unique<LApp>(std::move(lapp)), context);
+        } else {
+            std::string raw_tex = to_latex(std::make_unique<LApp>(std::move(lapp)), context);
+            if (context.mode == ConvMode::Math) {
+                // This is in math mode, make it into a sentence
+                context.mode = ConvMode::Text; // This prevents $...$ from being added again
+                ExprMap args;
+                auto tex_expr = std::unique_ptr<LExpr>(new LLiteral("$" + raw_tex + "$"));
+                args["body"] = get_vc(tex_expr);
+                return translate("_LeanTeX.Exact", args, context);
+            }
+            return raw_tex;
         }
-        return to_latex(std::make_unique<LApp>(std::move(lapp)), context);
     }
     else if (auto goal = downcast_raw<TGoal>(expr)) {
         ExprMap args;
@@ -224,7 +273,8 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
         args["proof"] = get_vc(proof);
         return translate("_LeanTeX.Theorem", args, context);
     } else {
-        throw std::runtime_error("Conversion to LaTeX not supported for expression " + expr->to_string());
+        log("Conversion to LaTeX not supported for expression " + expr->to_string(), LogLevel::WARNING);
+        return latexify(expr->to_string());
     }
 };
 

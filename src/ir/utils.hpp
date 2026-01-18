@@ -103,7 +103,10 @@ inline void substitute_types(std::unordered_map<std::string, LLevel*>& types, st
 }
 
 inline void substitute_binder(std::string name, LExpr* value, std::unique_ptr<LExpr>& expr) {
-    auto check = [&name, &value](std::unique_ptr<LExpr>& e) {
+    // Todo: Use De Bruijn indices to avoid variable capture issues
+
+    static int i = 1; // For renaming bound variables, we use a unique number to avoid collisions
+    auto check = [&name, &value, &expr](std::unique_ptr<LExpr>& e) {
         if (auto var = downcast_raw<LVar>(e)) {
             if (var->name == name) {
                 e = value->clone();
@@ -111,12 +114,40 @@ inline void substitute_binder(std::string name, LExpr* value, std::unique_ptr<LE
         }
         return false;
     };
+    // Check for naming collisions in what is being substituted
+    bool contains = false;
+    auto contains_check = [&name, &contains](std::unique_ptr<LExpr>& e) {
+        if (auto var = downcast_raw<LVar>(e)) {
+            if (var->name == name) {
+                contains = true;
+            }
+        }
+    };
+    auto value_uniq = std::unique_ptr<LExpr>(value);
+    recursive_apply_l(value_uniq, contains_check);
+    if (contains) {
+        // We rename the bound variable to avoid potential infinite loops
+        auto contains_fix = [&name](std::unique_ptr<LExpr>& e) {
+            if (auto var = downcast_raw<LVar>(e)) {
+                if (var->name == name) {
+                    var->name += "." + std::to_string(i);
+                }
+            }
+        };
+        recursive_apply_l(value_uniq, contains_fix);
+        i++;
+    }
+
     recursive_apply_l(expr, check);
+    value_uniq.release(); // Don't delete the original pointer
 }
 
 // Type inference
 // First pass: does main type inference logic
 inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
+    if (!expr) {
+        return nullptr;
+    }
     if (auto var = downcast_clone<LVar>(expr)) {
         if (!var->type) {
             log("Cannot infer type of unsolved variable"+var->to_string(), LogLevel::WARNING);
@@ -154,6 +185,9 @@ inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
         // For each argument that is applied, we go one step further inside
         // the LForAll associated with this, and substitute any values of bound variables
         // todo: resolve universes of substituted types
+        if (app->args.size() == 0) {
+            return infer_type(app->fn); // LApp is a useless wrapper here
+        }
         auto type_generic = infer_type(app->fn);
         while (auto app2 = downcast_raw<LApp>(type_generic)) {
             // Some functions return functions, so we need to unwrap those first
@@ -207,6 +241,33 @@ inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
     } else if (auto proj = downcast_clone<LProj>(expr)) {
         log("Cannot infer type of LProj", LogLevel::WARNING);
         return nullptr;
+    // TExpr's
+    } else if (auto have = downcast_clone<THave>(expr)) {
+        auto have_ptr = have->body->clone();
+        return infer_type(have_ptr);
+    } else if (auto intro = downcast_clone<TIntro>(expr)) {
+        // Convert to an LForAll
+        auto intro_ptr = intro->body->clone();
+        auto lfa = std::make_unique<LForAll>(nullptr, infer_type(intro_ptr));
+        lfa->binders.clear(); // Will start with one arg from constructor
+        for (auto& param : intro->params) {
+            lfa->binders.push_back(downcast_unique<LBinder>(param->clone()));
+        }
+        auto lfa_ptr = downcast_unique<LExpr>(std::move(lfa));
+        return lfa_ptr;
+    } else if (auto goal = downcast_clone<TGoal>(expr)) {
+        auto goal_ptr = goal->body->clone();
+        return infer_type(goal_ptr);
+    } else if (auto app = downcast_clone<TApply>(expr)) {
+        // Convert to an LApp
+        auto lapp = std::make_unique<LApp>(app->fn->clone(), nullptr);
+        lapp->args.clear(); // Will start with one arg from constructor
+        for (auto& arg : app->args) {
+            lapp->args.push_back(arg->clone());
+        }
+        auto lapp_ptr = downcast_unique<LExpr>(std::move(lapp));
+        return infer_type(lapp_ptr);
     }
+    log("Cannot infer type of expression: "+expr->to_string(), LogLevel::DEBUG);
     return nullptr;
 }
