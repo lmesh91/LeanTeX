@@ -151,7 +151,6 @@ inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
             return std::make_unique<LConst>("String", std::vector<std::unique_ptr<LLevel>>{});
         }
     } else if (auto app = downcast_clone<LApp>(expr)) {
-        log("Inferring type of expression: "+expr->to_string(), LogLevel::DEBUG);
         // For each argument that is applied, we go one step further inside
         // the LForAll associated with this, and substitute any values of bound variables
         // todo: resolve universes of substituted types
@@ -160,7 +159,6 @@ inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
             // Some functions return functions, so we need to unwrap those first
             type_generic = infer_type(app2->fn);
         }
-        log("Fn type inferred as: "+(type_generic ? type_generic->to_string() : "nullptr"), LogLevel::DEBUG);
         if (auto type = downcast_unique<LForAll>(type_generic)) {
             for (auto& arg : app->args) {
                 if (type->binders.size() == 0) {

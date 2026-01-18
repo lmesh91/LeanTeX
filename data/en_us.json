@@ -1,4 +1,55 @@
 {
+  "_LeanTeX": {
+    "children": {
+      "ForAll1": {
+        "math": "<a1> \\implies <.out>",
+        "text": "<a1> implies <.out>"
+      },
+      "ForAll2": {
+        "math": "<a1> \\implies <a2> \\implies <.out>",
+        "text": "<a1> implies <a2> implies <.out>"
+      },
+      "ForAll3": {
+        "math": "<a1> \\implies <a2> \\implies <a3> \\implies <.out>",
+        "text": "<a1> implies <a2> implies <a3> implies <.out>"
+      },
+      "ForAll4": {
+        "math": "<a1> \\implies <a2> \\implies <a3> \\implies <a4> \\implies <.out>",
+        "text": "<a1> implies <a2> implies <a3> implies <a4> implies <.out>"
+      },
+      "ForAll5": {
+        "math": "<a1> \\implies <a2> \\implies <a3> \\implies <a4> \\implies <a5> \\implies <.out>",
+        "text": "<a1> implies <a2> implies <a3> implies <a4> implies <a5> implies <.out>"
+      },
+      "Goal": {
+        "text": "To show that <type>, <body>"
+      },
+      "Have": {
+        "text": "<value> <body>"
+      },
+      "Intro1": {
+        "text": "Suppose that <i1:i>. <.out>"
+      },
+      "Intro2": {
+        "text": "Suppose that <i1:i> and <i2:i>. <.out>"
+      },
+      "Intro3": {
+        "text": "Suppose that <i1:i>, <i2:i>, and <i3:i>. <.out>"
+      },
+      "Intro4": {
+        "text": "Suppose that <i1:i>, <i2:i>, <i3:i>, and <i4:i>. <.out>"
+      },
+      "Intro5": {
+        "text": "Suppose that <i1:i>, <i2:i>, <i3:i>, <i4:i>, and <i5:i>. <.out>"
+      },
+      "Proof": {
+        "text": "\\begin{proof}\n<expr>\n\\end{proof}"
+      },
+      "Theorem": {
+        "text": "\\begin{theorem}[<@name>]\n<type>\n\\end{theorem}\n<proof>"
+      }
+    }
+  },
   "And": {
     "math": "<a> \\land <b>",
     "text": "<a> and <b>",
@@ -15,7 +66,6 @@
         "text": "Because <self>, it follows that <.out> by the definition of and.",
         "apply": "If we show that <self>, we can show that <.out> by the definition of and. <@self>"
      }
-
     }
   },
   "absurd": {
@@ -104,12 +154,8 @@
     "text": "True",
     "children": {
       "intro": {
-        "text": "We have True by the defintion of True."
+        "text": "We have True by the definition of True."
       }
     }
-  },
-  "->": {
-    "math": "<a> \\implies <b>",
-    "text": "<a> implies <b>"
   }
 }

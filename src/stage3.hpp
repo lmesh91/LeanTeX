@@ -11,7 +11,6 @@ VarContext is a structure for storing the context necessary for translation:
 the name, type, and on occasion value of statements.
 */
 struct VarContext {
-    std::string name;
     std::unique_ptr<LExpr> type;
     std::unique_ptr<LExpr> value;
 };
@@ -30,7 +29,7 @@ enum class ConvMode {
 Context is a structure for storing the overall context during LaTeX conversion.
 */
 struct Context {
-    std::vector<VarContext> vars;
+    std::unordered_map<std::string, VarContext> vars;
     ConvMode mode = ConvMode::Text;
 };
 
