@@ -31,6 +31,7 @@ Context is a structure for storing the overall context during LaTeX conversion.
 struct Context {
     ConvMode mode = ConvMode::Text;
     bool value = true; // Use the value instead of the type when possible. Used in ambiguous situations.
+    int priority = 0; // Priority - used for inserting parentheses automatically
 };
 
 // Core translation function

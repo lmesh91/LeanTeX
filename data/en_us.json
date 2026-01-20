@@ -6,23 +6,43 @@
       },
       "ForAll1": {
         "math": "<a1> \\implies <.out>",
-        "text": "<a1> implies <.out>"
+        "text": "<a1> implies <.out>",
+        "priority": 20
       },
       "ForAll2": {
         "math": "<a1> \\implies <a2> \\implies <.out>",
-        "text": "<a1> implies <a2> implies <.out>"
+        "text": "<a1> implies <a2> implies <.out>",
+        "priority": 20
       },
       "ForAll3": {
         "math": "<a1> \\implies <a2> \\implies <a3> \\implies <.out>",
-        "text": "<a1> implies <a2> implies <a3> implies <.out>"
+        "text": "<a1> implies <a2> implies <a3> implies <.out>",
+        "priority": 20
       },
       "ForAll4": {
         "math": "<a1> \\implies <a2> \\implies <a3> \\implies <a4> \\implies <.out>",
-        "text": "<a1> implies <a2> implies <a3> implies <a4> implies <.out>"
+        "text": "<a1> implies <a2> implies <a3> implies <a4> implies <.out>",
+        "priority": 20
       },
       "ForAll5": {
         "math": "<a1> \\implies <a2> \\implies <a3> \\implies <a4> \\implies <a5> \\implies <.out>",
-        "text": "<a1> implies <a2> implies <a3> implies <a4> implies <a5> implies <.out>"
+        "text": "<a1> implies <a2> implies <a3> implies <a4> implies <a5> implies <.out>",
+        "priority": 20
+      },
+      "AppForAll1": {
+        "text": "since <a1> and <fa>, <.out>\\_period"
+      },
+      "AppForAll2": {
+        "text": "since <a1>, <a2>, and <fa>, <.out>\\_period"
+      },
+      "AppForAll3": {
+        "text": "since <a1>, <a2>, <a3>, and <fa>, <.out>\\_period"
+      },
+      "AppForAll4": {
+        "text": "since <a1>, <a2>, <a3>, <a4>, and <fa>, <.out>\\_period"
+      },
+      "AppForAll5": {
+        "text": "since <a1>, <a2>, <a3>, <a4>, <a5>, and <fa>, <.out>\\_period"
       },
       "Goal": {
         "text": "to show that <type>, <@body>"
@@ -45,17 +65,15 @@
       "Intro5": {
         "text": "suppose that <i1:i>, <i2:i>, <i3:i>, <i4:i>, and <i5:i>\\_period <@.out>"
       },
-      "Proof": {
-        "text": "\\begin{proof}\n\\_start<@expr>\n\\end{proof}"
-      },
       "Theorem": {
-        "text": "\\begin{theorem}[<@name>]\n\\_start<type>\n\\end{theorem}\n<@proof>"
+        "text": "\\begin{theorem}[<@name>]\n\\_start<type>\n\\end{theorem}\n\\begin{proof}\n\\_start<@expr>\n\\end{proof}"
       }
     }
   },
   "And": {
     "math": "<a> \\land <b>",
     "text": "<a> and <b>",
+    "priority": 35,
     "children": {
      "intro": {
       "text": "because <left> and <right>, it follows that <.out> by the definition of and\\_period",
@@ -72,8 +90,8 @@
     }
   },
   "absurd": {
-    "text": "because <h_1> and <h_2>, anything follows, including <.out>, by the principle of explosion\\_period",
-    "apply": "if we show that <h_1> and <h_2>, anything follows, including <.out>, by the principle of explosion\\_period <@h_1> <@h_2>"
+    "text": "because <h₁> and <h₂>, anything follows, including <.out>, by the principle of explosion\\_period",
+    "apply": "if we show that <h₁> and <h₂>, anything follows, including <.out>, by the principle of explosion\\_period <@h₁> <@h₂>"
   },
   "Classical": {
     "children": {
@@ -104,6 +122,7 @@
   "Iff": {
     "math": "<a> \\iff <b>",
     "text": "<a> if and only if <b>",
+    "priority": 20,
     "children": {
       "intro": {
         "text": "we have shown <mp> and <mpr>, and thus <.out> follows by the definition of a biconditional statement\\_period",
@@ -121,11 +140,13 @@
   },
   "Not": {
     "math": "\\neg <a>",
-    "text": "not <a>"
+    "text": "not <a>",
+    "priority": 40
   },
   "Or": {
     "math": "<a> \\lor <b>",
     "text": "<a> or <b>",
+    "priority": 30,
     "children": {
       "inl": {
         "text": "because <h>, it follows that <.out> by the definition of or\\_period",

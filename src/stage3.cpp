@@ -64,7 +64,12 @@ std::string translate(std::string name, ExprMap& args, Context& context) {
         } else {
             log("No suitable translation found for " + name, LogLevel::WARNING);
             // Generic fallback
-            std::string out = "\\mathrm{" + latexify(name) + "}(";
+            std::string out;
+            if (context.mode == ConvMode::Math) {
+                out = "\\mathrm{" + latexify(name) + "}(";
+            } else {
+                out = latexify(name) + "(";
+            }
             for (auto& [arg_name, vc] : args) {
                 out += latexify(arg_name) + "=" + to_latex(std::move(vc.type ? vc.type : vc.value), context) + ", ";
             }
@@ -97,7 +102,13 @@ std::string translate(std::string name, ExprMap& args, Context& context) {
             start_var_name++;
         }
         ConvMode prev_mode = context.mode;
+        int prev_priority = context.priority;
         context.mode = ConvMode::Math;
+        if (translation_data(name).contains("priority")) {
+            context.priority = translation_data(name).at("priority");
+        } else {
+            context.priority = 0;
+        }
         // Check for translation mode indicators
         if (translation_str[end_var_name-1] == ':') {
             char mode_char = translation_str[end_var_name];
@@ -124,14 +135,21 @@ std::string translate(std::string name, ExprMap& args, Context& context) {
         std::string arg_latex;
         if (args.find(arg_name) == args.end()) {
             log("Argument " + arg_name + " not found for translation of " + name, LogLevel::WARNING);
+            for (const auto& [key, vc] : args) {
+                log("Available arg: " + key + " type: " + (vc.type ? vc.type->to_string() : "null") + " value: " + vc.value->to_string(), LogLevel::DEBUG);
+            }
             arg_latex = "\\langle " + arg_name + "?\\rangle";
         } else {
             arg_latex = to_latex(std::move(value ? args[arg_name].value : args[arg_name].type), context);
+        }
+        if ((prev_priority != 0 || context.priority != 0) && context.priority >= prev_priority) {
+            arg_latex = "(" + arg_latex + ")";
         }
         if ((context.mode == ConvMode::Math) ^ (prev_mode == ConvMode::Math)) {
             arg_latex = "$" + arg_latex + "$";
         }
         context.mode = prev_mode; // Restore previous state
+        context.priority = prev_priority;
         translation_str.replace(start, end - start + 1, arg_latex);
         pos = start + arg_latex.length();
     }
@@ -141,7 +159,6 @@ std::string translate(std::string name, ExprMap& args, Context& context) {
 std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
     // LExpr types
     if (!expr) return "?nullptr";
-    log("Converting expression to LaTeX: " + expr->to_string(), LogLevel::DEBUG);
     if (auto lit = downcast_raw<LLiteral>(expr)) {
         if (lit->type == LLiteral::Type::String) {
             context.mode = ConvMode::Text;
@@ -161,9 +178,13 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
         return translate(const_expr->name, args, context);
     }
     else if (auto var = downcast_raw<LVar>(expr)) {
+        //log("Parsing Var: " + var->to_string(), LogLevel::DEBUG);
+        context.priority = 0;
         // Always use math mode for named variables
         if (context.value && var->solved) {
-            return to_latex(var->type->clone(), context);
+            if (!is_a<LSort>(var->type)) {
+                return to_latex(var->type->clone(), context);
+            }
         }
         if (context.mode != ConvMode::Math) {
             return "$" + latexify(var->name) + "$";
@@ -172,6 +193,7 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
     }
     else if (auto fa = downcast_raw<LForAll>(expr)) {
         ExprMap args;
+        log("Parsing For All: " + fa->to_string(), LogLevel::DEBUG);
         for (size_t i = 0; i < fa->binders.size(); ++i) {
             args["a" + std::to_string(i+1)] = get_vc(fa->binders[i]->type);
         }
@@ -180,6 +202,7 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
         return translate("_LeanTeX.ForAll"+std::to_string(fa->binders.size()), args, context);
     }
     else if (auto app = downcast_raw<LApp>(expr)) {
+        log("Parsing LApp: " + app->to_string(), LogLevel::DEBUG);
         if (app->args.size() == 0) {
             return to_latex(app->fn->clone(), context);
         }
@@ -198,10 +221,22 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
         auto fn = app->fn->clone();
         while (!is_a<LConst>(fn)) {
             if (is_a<LSort>(fn)) {
-                return translate(fn->to_string(), args, context);;
+                return translate(fn->to_string(), args, context);
             }
-            fn = infer_type(fn);
+            if (is_a<LForAll>(fn)) {
+                auto fa = downcast_raw<LForAll>(fn);
+                auto fa_ref = fa->clone();
+                args["fa"] = get_vc(fa_ref);
+                for (size_t i = 0; i < fa->binders.size(); ++i) {
+                    args["a" + std::to_string(i+1)] = get_vc(fa->binders[i]->type);
+                }
+                auto body = fa->body->clone();
+                args[".out"] = get_vc(body);
+                return translate("_LeanTeX.AppForAll"+std::to_string(fa->binders.size()), args, context);
+            }
             log("Unwrapping LApp function to find LConst: " + fn->to_string(), LogLevel::DEBUG);
+            fn = infer_type(fn);
+            log("Now is: " + fn->to_string(), LogLevel::DEBUG);
         }
         std::string fn_name = downcast_clone<LConst>(fn)->name;
         return translate(fn_name, args, context);
@@ -247,6 +282,8 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
         args["value"] = get_vc(value);
         auto body = have->body->clone();
         args["body"] = get_vc(body);
+        auto type = have->type->clone();
+        args["type"] = get_vc(type);
         return translate("_LeanTeX.Have", args, context);
     }
     else if (auto intro = downcast_raw<TIntro>(expr)) {
@@ -258,19 +295,13 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
         args[".out"] = get_vc(body);
         return translate("_LeanTeX.Intro"+std::to_string(intro->params.size()), args, context);
     }
-    else if (auto proof = downcast_raw<TProof>(expr)) {
-        ExprMap args;
-        auto expr = proof->expr->clone();
-        args["expr"] = get_vc(expr);
-        return translate("_LeanTeX.Proof", args, context);
-    }
     else if (auto theorem = downcast_raw<TTheorem>(expr)) {
         ExprMap args;
         auto name = std::unique_ptr<LExpr>(new LLiteral(theorem->name));
         args["name"] = get_vc(name);
         args["type"] = get_vc(theorem->type);
-        auto proof = theorem->proof->clone();
-        args["proof"] = get_vc(proof);
+        auto expr = theorem->proof->expr->clone();
+        args["expr"] = get_vc(expr);
         return translate("_LeanTeX.Theorem", args, context);
     } else {
         log("Conversion to LaTeX not supported for expression " + expr->to_string(), LogLevel::WARNING);
@@ -351,8 +382,17 @@ void output_latex(std::string tex) {
     tex_file.close();
     log("Wrote LaTeX output to " + tex_output, LogLevel::INFO);
     // Compile the LaTeX file to PDF
+    #if (defined(WIN32) || defined(_WIN32) || defined(__WIN32)) && !defined(__CYGWIN__)
+    // Windows Compilation
+    std::ostringstream command;
+    command << "cd " << output_dir << " && " << LOADER.get_option("LaTeX") << " " << code_name << ".tex";
+    log("Compiling LaTeX file with command: " + command.str(), LogLevel::INFO);
+    std::system(command.str().c_str());
+    #else
+    // Linux Compilation
     std::ostringstream command;
     command << "cd " << output_dir << "; " << LOADER.get_option("LaTeX") << " " << code_name << ".tex > /dev/null";
     log("Compiling LaTeX file with command: " + command.str(), LogLevel::INFO);
     std::system(command.str().c_str());
+    #endif
 }
