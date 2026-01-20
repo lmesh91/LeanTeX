@@ -306,8 +306,35 @@ std::string latex_conv(std::vector<std::unique_ptr<TExpr>>&& latex_ir) {
         }
     }
     out += "\n\\end{document}";
+    latex_post_process(out);
     return out;
 };
+
+// Does final post-processing steps for the LaTeX string
+void latex_post_process(std::string& tex) {
+    // The \_period marker indicates the end of a sentence.
+    size_t pos = 0;
+    while ((pos = tex.find("\\_period", pos)) != std::string::npos) {
+        tex.replace(pos, 8, ".");
+        pos++;
+        // Start the next sentence with a capital letter
+        while (pos < tex.length() && std::isspace(tex[pos])) {
+            pos++; // find the first non-whitespace character
+        }
+        if (pos < tex.length()) {
+            tex[pos] = std::toupper(tex[pos]);
+        }
+    }
+    // The \_start marker indicates the start of a paragraph.
+    pos = 0;
+    while ((pos = tex.find("\\_start", pos)) != std::string::npos) {
+        tex.replace(pos, 7, "");
+        // Start the first sentence in a paragraph with a capital letter
+        if (pos < tex.length()) {
+            tex[pos] = std::toupper(tex[pos]);
+        }
+    }
+}
 
 // Outputs the LaTeX string to a .tex file and compiles it
 // We assume that pdftex is used on Linux, todo for other OSes

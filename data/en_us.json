@@ -2,7 +2,7 @@
   "_LeanTeX": {
     "children": {
       "Exact": {
-        "text": "Therefore <@body>."
+        "text": "Therefore <@body>\\_period"
       },
       "ForAll1": {
         "math": "<a1> \\implies <.out>",
@@ -25,31 +25,31 @@
         "text": "<a1> implies <a2> implies <a3> implies <a4> implies <a5> implies <.out>"
       },
       "Goal": {
-        "text": "To show that <type>, <@body>"
+        "text": "to show that <type>, <@body>"
       },
       "Have": {
         "text": "<@value> <@body>"
       },
       "Intro1": {
-        "text": "Suppose that <i1:i>. <@.out>"
+        "text": "suppose that <i1:i>\\_period <@.out>"
       },
       "Intro2": {
-        "text": "Suppose that <i1:i> and <i2:i>. <@.out>"
+        "text": "suppose that <i1:i> and <i2:i>\\_period <@.out>"
       },
       "Intro3": {
-        "text": "Suppose that <i1:i>, <i2:i>, and <i3:i>. <@.out>"
+        "text": "suppose that <i1:i>, <i2:i>, and <i3:i>\\_period <@.out>"
       },
       "Intro4": {
-        "text": "Suppose that <i1:i>, <i2:i>, <i3:i>, and <i4:i>. <@.out>"
+        "text": "suppose that <i1:i>, <i2:i>, <i3:i>, and <i4:i>\\_period <@.out>"
       },
       "Intro5": {
-        "text": "Suppose that <i1:i>, <i2:i>, <i3:i>, <i4:i>, and <i5:i>. <@.out>"
+        "text": "suppose that <i1:i>, <i2:i>, <i3:i>, <i4:i>, and <i5:i>\\_period <@.out>"
       },
       "Proof": {
-        "text": "\\begin{proof}\n<@expr>\n\\end{proof}"
+        "text": "\\begin{proof}\n\\_start<@expr>\n\\end{proof}"
       },
       "Theorem": {
-        "text": "\\begin{theorem}[<@name>]\n<type>\n\\end{theorem}\n<@proof>"
+        "text": "\\begin{theorem}[<@name>]\n\\_start<type>\n\\end{theorem}\n<@proof>"
       }
     }
   },
@@ -58,46 +58,46 @@
     "text": "<a> and <b>",
     "children": {
      "intro": {
-      "text": "Because <left> and <right>, it follows that <.out> by the definition of and.",
-      "apply": "To show that <.out>, we must show that <left> and <right> by the definition of and. <@left> <@right>"
+      "text": "because <left> and <right>, it follows that <.out> by the definition of and\\_period",
+      "apply": "to show that <.out>, we must show that <left> and <right> by the definition of and\\_period <@left> <@right>"
      },
      "left": {
-        "text": "Because <self>, it follows that <.out> by the definition of and.",
-        "apply": "If we show that <self>, we can show that <.out> by the definition of and. <@self>"
+        "text": "because <self>, it follows that <.out> by the definition of and\\_period",
+        "apply": "if we show that <self>, we can show that <.out> by the definition of and\\_period <@self>"
      },
      "right": {
-        "text": "Because <self>, it follows that <.out> by the definition of and.",
-        "apply": "If we show that <self>, we can show that <.out> by the definition of and. <@self>"
+        "text": "because <self>, it follows that <.out> by the definition of and\\_period",
+        "apply": "if we show that <self>, we can show that <.out> by the definition of and\\_period <@self>"
      }
     }
   },
   "absurd": {
-    "text": "Because <h_1> and <h_2>, anything follows, including <.out>, by the principle of explosion.",
-    "apply": "If we show that <h_1> and <h_2>, anything follows, including <.out>, by the principle of explosion. <@h_1> <@h_2>"
+    "text": "because <h_1> and <h_2>, anything follows, including <.out>, by the principle of explosion\\_period",
+    "apply": "if we show that <h_1> and <h_2>, anything follows, including <.out>, by the principle of explosion\\_period <@h_1> <@h_2>"
   },
   "Classical": {
     "children": {
       "em" : {
         "math": "<.out>",
-        "text": "We have <.out> by the principle of excluded middle."
+        "text": "we have <.out> by the principle of excluded middle\\_period"
       },
       "byCases" : {
-        "text": "Because <hpq> and <hnpq>, we have <.out> by the principle of excluded middle.",
-        "apply": "If we show <hpq> and <hnpq>, we would have <.out> by the principle of excluded middle. <@hpq> <@hnpq>"
+        "text": "because <hpq> and <hnpq>, we have <.out> by the principle of excluded middle\\_period",
+        "apply": "if we show <hpq> and <hnpq>, we would have <.out> by the principle of excluded middle\\_period <@hpq> <@hnpq>"
       },
       "byContradiction" : {
-        "text": "Because <h>, <.out> by contradiction.",
-        "apply": "If we show <h>, we have <.out> by contradiction. <@h>"
+        "text": "because <h>, <.out> by contradiction\\_period",
+        "apply": "if we show <h>, we have <.out> by contradiction\\_period <@h>"
       }
     }
   },
   "False": {
-    "math": "False",
+    "math": "\\mathrm{False}",
     "text": "False",
     "children": {
       "elim": {
-        "text": "Because <h> is False, anything follows, including <.out>, by the principle of explosion.",
-        "apply": "If we show that <h> is False, anything follows, including <.out>, by the principle of explosion. <@h>"
+        "text": "because <h> is False, anything follows, including <.out>, by the principle of explosion\\_period",
+        "apply": "if we show that <h> is False, anything follows, including <.out>, by the principle of explosion\\_period <@h>"
       }
     }
   },
@@ -106,46 +106,46 @@
     "text": "<a> if and only if <b>",
     "children": {
       "intro": {
-        "text": "We have shown <mp> and <mpr>, and thus <.out> follows by the definition of a biconditional statement.",
-        "apply": "By the definition of a biconditional statement, we must show that <mp> and <mpr> to show <.out>. <@mp> <@mpr>"
+        "text": "we have shown <mp> and <mpr>, and thus <.out> follows by the definition of a biconditional statement\\_period",
+        "apply": "by the definition of a biconditional statement, we must show that <mp> and <mpr> to show <.out>\\_period <@mp> <@mpr>"
       },
       "mp": {
-        "text": "Because <self>, it follows that <.out> by the definition of a biconditional statement.",
-        "apply": "If we can show that <self>, if follows that <.out> by the definition of a biconditional statement. <@self>"
+        "text": "because <self>, it follows that <.out> by the definition of a biconditional statement\\_period",
+        "apply": "if we can show that <self>, if follows that <.out> by the definition of a biconditional statement\\_period <@self>"
       },
       "mpr": {
-        "text": "Because <self>, it follows that <.out> by the definition of a biconditional statement.",
-        "apply": "If we can show that <self>, if follows that <.out> by the definition of a biconditional statement. <@self>"
+        "text": "because <self>, it follows that <.out> by the definition of a biconditional statement\\_period",
+        "apply": "if we can show that <self>, if follows that <.out> by the definition of a biconditional statement\\_period <@self>"
       }
     }
   },
   "Not": {
     "math": "\\neg <a>",
-    "text": "Not <a>"
+    "text": "not <a>"
   },
   "Or": {
     "math": "<a> \\lor <b>",
     "text": "<a> or <b>",
     "children": {
       "inl": {
-        "text": "Because <h>, it follows that <.out> by the definition of or.",
-        "apply": "If we show that <h>, we can show that <.out> by the definition of or. <@h>"
+        "text": "because <h>, it follows that <.out> by the definition of or\\_period",
+        "apply": "if we show that <h>, we can show that <.out> by the definition of or\\_period <@h>"
       },
       "intro_left": {
-        "text": "Because <h>, it follows that <.out> by the definition of or.",
-        "apply": "If we show that <h>, we can show that <.out> by the definition of or. <@h>"
+        "text": "because <h>, it follows that <.out> by the definition of or\\_period",
+        "apply": "if we show that <h>, we can show that <.out> by the definition of or\\_period <@h>"
       },
       "inr": {
-        "text": "Because <h>, it follows that <.out> by the definition of or.",
-        "apply": "If we show that <h>, we can show that <.out> by the definition of or. <@h>"
+        "text": "because <h>, it follows that <.out> by the definition of or\\_period",
+        "apply": "if we show that <h>, we can show that <.out> by the definition of or\\_period <@h>"
       },
       "intro_right": {
-        "text": "Because <h>, it follows that <.out> by the definition of or.",
-        "apply": "If we show that <h>, we can show that <.out> by the definition of or. <@h>"
+        "text": "because <h>, it follows that <.out> by the definition of or\\_period",
+        "apply": "if we show that <h>, we can show that <.out> by the definition of or\\_period <@h>"
       },
       "elim": {
-        "text": "We have shown <left> and <right>, and thus given <h>, <.out> follows by the definition of or.",
-        "apply": "Given <h>, to show that <.out>, we must show that <left> and <right> by the definition of or. <@left> <@right>"
+        "text": "we have shown <left> and <right>, and thus given <h>, <.out> follows by the definition of or\\_period",
+        "apply": "given <h>, to show that <.out>, we must show that <left> and <right> by the definition of or\\_period <@left> <@right>"
       }
     }
   },
@@ -153,11 +153,11 @@
     "text": "placeholder"
   },
   "True": {
-    "math": "True",
+    "math": "\\mathrm{True}",
     "text": "True",
     "children": {
       "intro": {
-        "text": "We have True by the definition of True."
+        "text": "we have True by the definition of True\\_period"
       }
     }
   }

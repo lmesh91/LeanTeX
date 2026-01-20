@@ -38,4 +38,5 @@ std::string translate(std::string name, std::unordered_map<std::string, std::uni
 
 std::string to_latex(std::unique_ptr<LExpr> expr, Context& context);
 std::string latex_conv(std::vector<std::unique_ptr<TExpr>>&& latex_ir);
+void latex_post_process(std::string& tex);
 void output_latex(std::string tex);
