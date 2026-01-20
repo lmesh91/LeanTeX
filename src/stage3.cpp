@@ -234,7 +234,7 @@ std::string to_latex(std::unique_ptr<LExpr> expr, Context& context) {
                 args[".out"] = get_vc(body);
                 return translate("_LeanTeX.AppForAll"+std::to_string(fa->binders.size()), args, context);
             }
-            log("Unwrapping LApp function to find LConst: " + fn->to_string(), LogLevel::DEBUG);
+            log("Unwrapping LApp function:" + fn->to_string(), LogLevel::DEBUG);
             fn = infer_type(fn);
             log("Now is: " + fn->to_string(), LogLevel::DEBUG);
         }

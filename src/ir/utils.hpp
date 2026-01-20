@@ -26,48 +26,50 @@ Derived* downcast_raw(std::unique_ptr<TExpr>& base_ptr) {
     return dynamic_cast<Derived*>(base_ptr.get());
 }
 
-void recursive_apply_l(std::unique_ptr<LExpr>& expr, std::function<void(std::unique_ptr<LExpr>&)> fun);
+void recursive_apply_l(std::unique_ptr<LExpr>& expr, std::function<void(std::unique_ptr<LExpr>&, int)> fun, int idx = 0);
 
 // Specific helper function for LBinders
-inline void recursive_apply_l(std::unique_ptr<LBinder>& expr, std::function<void(std::unique_ptr<LExpr>&)> fun) {
+inline void recursive_apply_l(std::unique_ptr<LBinder>& expr, std::function<void(std::unique_ptr<LExpr>&, int)> fun, int idx = 0) {
     if (!expr) return;
     auto lexpr = expr->clone();
-    fun(lexpr);
-    recursive_apply_l(expr->type, fun);
+    fun(lexpr, idx);
+    recursive_apply_l(expr->type, fun, idx);
 }
 
 // Applies a function recursively on an LExpr and its children.
 // Note that the pointers are passed by reference so they can modify their containers if they are overridden.
-inline void recursive_apply_l(std::unique_ptr<LExpr>& expr, std::function<void(std::unique_ptr<LExpr>&)> fun) {
+inline void recursive_apply_l(std::unique_ptr<LExpr>& expr, std::function<void(std::unique_ptr<LExpr>&, int)> fun, int idx) {
     if (!expr) return;
-    fun(expr);
+    fun(expr, idx);
     if (auto binder = downcast_raw<LBinder>(expr)) {
-        recursive_apply_l(binder->type, fun);
+        recursive_apply_l(binder->type, fun, idx);
     } else if (auto var = downcast_raw<LVar>(expr)) {
-        recursive_apply_l(var->type, fun);
+        recursive_apply_l(var->type, fun, idx);
     } else if (auto const_expr = downcast_raw<LConst>(expr)) {
-        recursive_apply_l(const_expr->meta.expr, fun);
+        recursive_apply_l(const_expr->meta.expr, fun, idx);
     } else if (auto app = downcast_raw<LApp>(expr)) {
-        recursive_apply_l(app->fn, fun);
+        recursive_apply_l(app->fn, fun, idx);
         for (auto& arg : app->args) {
-            recursive_apply_l(arg, fun);
+            recursive_apply_l(arg, fun, idx);
         }
     } else if (auto lam = downcast_raw<LLambda>(expr)) {
         for (auto& bin : lam->binders) {
-            recursive_apply_l(bin, fun);
+            recursive_apply_l(bin, fun, idx);
         }
-        recursive_apply_l(lam->body, fun);
+        recursive_apply_l(lam->body, fun, idx+1);
     } else if (auto fa = downcast_raw<LForAll>(expr)) {
+        int n = 0;
         for (auto& bin : fa->binders) {
-            recursive_apply_l(bin, fun);
+            recursive_apply_l(bin, fun, idx++);
         }
-        recursive_apply_l(fa->body, fun);
+        recursive_apply_l(fa->body, fun, idx);
+        idx -= n;
     } else if (auto let = downcast_raw<LLet>(expr)) {
-        recursive_apply_l(let->type, fun);
-        recursive_apply_l(let->value, fun);
-        recursive_apply_l(let->body, fun);
+        recursive_apply_l(let->type, fun, idx);
+        recursive_apply_l(let->value, fun, idx);
+        recursive_apply_l(let->body, fun, idx+1);
     } else if (auto proj = downcast_raw<LProj>(expr)) {
-        recursive_apply_l(proj->structE, fun);
+        recursive_apply_l(proj->structE, fun, idx);
     }
 }
 
@@ -95,7 +97,8 @@ inline void _substitute_types(std::unordered_map<std::string, LLevel*>& types, s
 }
 
 inline void substitute_types(std::unordered_map<std::string, LLevel*>& types, std::unique_ptr<LExpr>& expr) {
-    recursive_apply_l(expr, [&types](std::unique_ptr<LExpr>& e) {
+    recursive_apply_l(expr, [&types](std::unique_ptr<LExpr>& e, int idx) {
+        (void)idx; // Unused
         if (auto sort = downcast_raw<LSort>(e)) {
             _substitute_types(types, sort->level);
         }
@@ -103,43 +106,18 @@ inline void substitute_types(std::unordered_map<std::string, LLevel*>& types, st
 }
 
 inline void substitute_binder(std::string name, LExpr* value, std::unique_ptr<LExpr>& expr) {
-    // Todo: Use De Bruijn indices to avoid variable capture issues
-
-    static int i = 1; // For renaming bound variables, we use a unique number to avoid collisions
-    auto check = [&name, &value, &expr](std::unique_ptr<LExpr>& e) {
+    auto check = [&name, &value, &expr](std::unique_ptr<LExpr>& e, int idx) {
         if (auto var = downcast_raw<LVar>(e)) {
-            if (var->name == name) {
+            if (var->index == idx) {
+                if (var->name != name) {
+                    log("Found matching variable with index "+std::to_string(var->index)+" but name mismatch ("+var->name+" vs "+name+")", LogLevel::WARNING);
+                    return;
+                }
                 e = value->clone();
             }
         }
-        return false;
     };
-    // Check for naming collisions in what is being substituted
-    bool contains = false;
-    auto contains_check = [&name, &contains](std::unique_ptr<LExpr>& e) {
-        if (auto var = downcast_raw<LVar>(e)) {
-            if (var->name == name) {
-                contains = true;
-            }
-        }
-    };
-    auto value_uniq = std::unique_ptr<LExpr>(value);
-    recursive_apply_l(value_uniq, contains_check);
-    if (contains) {
-        // We rename the bound variable to avoid potential infinite loops
-        auto contains_fix = [&name](std::unique_ptr<LExpr>& e) {
-            if (auto var = downcast_raw<LVar>(e)) {
-                if (var->name == name) {
-                    var->name += "." + std::to_string(i);
-                }
-            }
-        };
-        recursive_apply_l(value_uniq, contains_fix);
-        i++;
-    }
-
     recursive_apply_l(expr, check);
-    value_uniq.release(); // Don't delete the original pointer
 }
 
 // Type inference
@@ -167,7 +145,23 @@ inline std::unique_ptr<LExpr> infer_type(std::unique_ptr<LExpr>& expr) {
                 return nullptr;
             }
         }
-        std::unique_ptr<LExpr> type = const_expr->meta.expr->clone();
+
+        std::unique_ptr<LExpr> type;
+        if (const_expr->name == "Not") {
+            // Not p has type (p : Prop) -> Prop but we want it to translate to (p : Prop) -> p -> False
+            auto false_const = std::make_unique<LConst>("False", std::vector<std::unique_ptr<LLevel>>{});
+            auto prop = std::make_unique<LSort>(std::make_unique<LLevel>());
+            auto prop_binder = std::make_unique<LBinder>("a", std::move(prop), LBinder::Info::Explicit);
+            auto p_var = std::make_unique<LVar>(0);
+            p_var->solve(std::make_unique<LBinder>("a", std::make_unique<LSort>(std::make_unique<LLevel>()), LBinder::Info::Explicit));
+            auto p_binder = std::make_unique<LBinder>("ha", std::move(p_var), LBinder::Info::Explicit);
+            auto fa1 = std::make_unique<LForAll>(std::move(p_binder), std::move(false_const));
+            type = std::make_unique<LForAll>(std::move(prop_binder), std::move(fa1));
+            log("Inferred type of Not as "+type->to_string(), LogLevel::DEBUG);
+            log("Original type: "+const_expr->meta.expr->to_string(), LogLevel::DEBUG);
+        } else {
+            type = const_expr->meta.expr->clone();
+        };
         // Apply universe variables to the type
         std::unordered_map<std::string, LLevel*> level_types;
         for (size_t i = 0; i < const_expr->levels.size(); i++) {

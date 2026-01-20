@@ -96,7 +96,6 @@
   "Classical": {
     "children": {
       "em" : {
-        "math": "<.out>",
         "text": "we have <.out> by the principle of excluded middle\\_period"
       },
       "byCases" : {

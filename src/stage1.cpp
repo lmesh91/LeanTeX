@@ -135,7 +135,7 @@ void _solve_variables(LExpr* expr, std::unordered_map<std::string, std::unique_p
             }
         } else if (var->var_type == LVar::Type::Bound) {
             // De Bruijn indices count from the innermost binder outwards
-            if (var->index < bound_names.size()) {
+            if (var->index < (int)bound_names.size()) {
                 var->solve(downcast_unique<LBinder>(bound_names[bound_names.size() - 1 - var->index]->clone()));
             } else {
                 log("Bound variable with index "+std::to_string(var->index)+" out of range (only "+std::to_string(bound_names.size())+" binders in scope), cannot solve", LogLevel::WARNING);

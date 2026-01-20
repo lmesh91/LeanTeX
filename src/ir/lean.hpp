@@ -144,7 +144,7 @@ struct LVar : public LExpr {
     std::unique_ptr<LExpr> type;
     std::string name;
     bool solved;
-    unsigned int index;
+    int index;
 
     // Bound variable constructor
     LVar(int index) : var_type(Type::Bound), name(""), solved(false), index(index) {};
