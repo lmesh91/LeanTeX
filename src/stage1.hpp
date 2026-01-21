@@ -1,4 +1,4 @@
-// lean_to_ir.hpp - Conversion from Lean Elaboration to Lean IR
+// stage1.hpp - Conversion from Lean Elaboration to Lean IR
 #pragma once
 #include "ir/lean.hpp"
 #include <utility>
@@ -10,8 +10,8 @@ const json& node(const json& j, int n);
 json child(const json& j, int n);
 json child(std::string type, const json& j, int n);
 LBinder::Info binder_info_of(const std::string& info_str);
-void solve_variables(LExpr* expr, const json& ctx);
-void _solve_variables(LExpr* expr, const std::map<std::string, std::string>& free_names, std::vector<std::string> bound_names);
+void solve_variables(LExpr* expr, const json& ctx, const std::unordered_map<std::string, LConst::Meta>& const_types);
+void _solve_variables(LExpr* expr, std::unordered_map<std::string, std::unique_ptr<LBinder>>& free_names, std::vector<std::unique_ptr<LBinder>>& bound_names, const std::unordered_map<std::string, LConst::Meta>& const_types);
 
 // Takes in an arbitrary number of keys and traverses through the JSON object with them
 // This function itself is pretty messy but it makes the rest of the code much cleaner
@@ -53,9 +53,10 @@ const json& at(const json& j, Keys&&... keys) {
 }
 
 // The main function to convert Lean AST and elaboration JSON into Lean IR.
-std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab);
+std::vector<std::unique_ptr<LExpr>> lean_to_ir(const json& elab, const json& sym);
 
 // Parsers for individual syntax
-std::unique_ptr<LTheorem> parse_theorem(const json& elab);
+std::unique_ptr<LTheorem> parse_theorem(const json& elab, const json& sym);
 std::unique_ptr<LExpr> parse_expr(const json& expr);
+std::unique_ptr<LExpr> parse_and_solve(const json& expr);
 std::unique_ptr<LLevel> parse_level(const json& level);

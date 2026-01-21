@@ -1,3 +1,6 @@
 build/
 .leantex/
+.idea/
+.vscode/
+.lake/
 leantex.ini

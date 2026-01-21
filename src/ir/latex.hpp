@@ -7,14 +7,18 @@
 #include <vector>
 #include <utility>
 #include "ir/lean.hpp"
-
 /*
 TExpr is a base class for Latex IR expressions.
 It inherits basic functionality from LExpr (and includes some LExpr types as sub-expressions).
 However, it is designed to be closer to Lean's "tactic mode", which builds up
 a proof expression in a way that is similar to a written proof.
+
+The to_tactic function is designed to emit a tactic mode proof in Lean.
 */
-struct TExpr : public LExpr {};
+struct TExpr : public LExpr {
+    static const int INDENT_SIZE = 2; // size of indentation when pretty printing
+    virtual std::string to_tactic(int depth = 0) const noexcept = 0;
+};
 
 /*
 THave is similar to the `have` tactic in Lean,
@@ -43,6 +47,10 @@ struct THave : public TExpr {
         }
     };
 
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<THave>(name, type ? type->clone() : nullptr, value ? downcast_unique<TExpr>(value->clone()) : nullptr, body ? downcast_unique<TExpr>(body->clone()) : nullptr);
+    }
+
     json to_json() const override {
         if (!type) {
             throw std::runtime_error("THave missing type");
@@ -66,15 +74,38 @@ struct THave : public TExpr {
         }
         out += " := by ";
         if (value) {
-            out += "(" + value->to_string() + ")";
+            out += value->to_string();
         } else {
-            out += "(?nullptr)";
+            out += "?nullptr";
         }
         out += "; ";
         if (body) {
-            out += "(" + body->to_string() + ")";
+            out += body->to_string();
         } else {
-            out += "(?nullptr)";
+            out += "?nullptr";
+        }
+        return out;
+    }
+
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out;
+        out += std::string(depth, ' ') + "have " + name + " : ";
+        if (type) {
+            out += type->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        out += " := by\n";
+        if (value) {
+            out += value->to_tactic(depth+INDENT_SIZE);
+        } else {
+            out += std::string(depth+INDENT_SIZE, ' ') + "?nullptr";
+        }
+        out += "\n";
+        if (body) {
+            out += body->to_tactic(depth);
+        } else {
+            out += std::string(depth, ' ') + "?nullptr";
         }
         return out;
     }
@@ -99,6 +130,13 @@ struct TIntro : public TExpr {
             this->body->parent = this;
         }
     };
+    std::unique_ptr<LExpr> clone() const override {
+        std::vector<std::unique_ptr<LBinder>> param_clones;
+        for (const auto& param : params) {
+            param_clones.push_back(param ? downcast_unique<LBinder>(param->clone()) : nullptr);
+        }
+        return std::make_unique<TIntro>(std::move(param_clones), body ? downcast_unique<TExpr>(body->clone()) : nullptr);
+    }
     json to_json() const override {
         json jparams = json::array();
         for (const auto& param : params) {
@@ -114,18 +152,54 @@ struct TIntro : public TExpr {
     };
     std::string to_string() const noexcept override {
         std::string out = "intro ";
-        for (const auto& param : params) {
-            if (param) {
-                out += param->to_string() + " ";
+        for (size_t i = 0; i < params.size(); i++) {
+            if (params.at(i)) {
+                out += get_var_name(params.at(i)->name) + " /- ";
+                if (params.at(i)->type) {
+                    out += params.at(i)->type->to_string();
+                } else {
+                    out += "?nullptr";
+                }
+                out += " -/";
             } else {
-                out += "(?nullptr) ";
+                out += "?nullptr";
+            }
+            if (i < params.size() - 1) {
+                out += " ";
             }
         }
         out += "; ";
         if (body) {
             out += body->to_string();
         } else {
-            out += "(?nullptr)";
+            out += "?nullptr";
+        }
+        return out;
+    }
+
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out = std::string(depth, ' ') + "intro ";
+        for (size_t i = 0; i < params.size(); i++) {
+            if (params.at(i)) {
+                out += get_var_name(params.at(i)->name) + " /- ";
+                if (params.at(i)->type) {
+                    out += params.at(i)->type->to_string();
+                } else {
+                    out += "?nullptr";
+                }
+                out += " -/";
+            } else {
+                out += "?nullptr";
+            }
+            if (i < params.size() - 1) {
+                out += " ";
+            }
+        }
+        out += "\n";
+        if (body) {
+            out += body->to_tactic(depth);
+        } else {
+            out += "?nullptr";
         }
         return out;
     }
@@ -146,6 +220,9 @@ struct TGoal : public TExpr {
             this->body->parent = this;
         }
     };
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<TGoal>(param ? downcast_unique<LBinder>(param->clone()) : nullptr, body ? downcast_unique<TExpr>(body->clone()) : nullptr);
+    }
     json to_json() const override {
         if (!param) {
             throw std::runtime_error("TGoal has null parameter");
@@ -158,15 +235,42 @@ struct TGoal : public TExpr {
     std::string to_string() const noexcept override {
         std::string out = "case ";
         if (param) {
-            out += param->to_string() + " ";
+            out += get_var_name(param->name) + " /- ";
+            if (param->type) {
+                out += param->type->to_string();
+            } else {
+                out += "?nullptr";
+            }
+            out += " -/ ";
         } else {
-            out += "(?nullptr) ";
+            out += "?nullptr";
         }
         out += "=> ";
         if (body) {
             out += body->to_string();
         } else {
-            out += "(?nullptr)";
+            out += "?nullptr";
+        }
+        return out;
+    }
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out = std::string(depth, ' ') + "case ";
+        if (param) {
+            out += get_var_name(param->name) + " /- ";
+            if (param->type) {
+                out += param->type->to_string();
+            } else {
+                out += "?nullptr";
+            }
+            out += " -/ ";
+        } else {
+            out += "?nullptr";
+        }
+        out += "=>\n";
+        if (body) {
+            out += body->to_tactic(depth+INDENT_SIZE);
+        } else {
+            out += std::string(depth+INDENT_SIZE, ' ') + "?nullptr";
         }
         return out;
     }
@@ -192,6 +296,15 @@ struct TApply : public TExpr {
             this->fn->parent = this;
         }
     };
+
+    std::unique_ptr<LExpr> clone() const override {
+        std::unique_ptr<LExpr> fn_clone = fn ? fn->clone() : nullptr;
+        std::vector<std::unique_ptr<LExpr>> arg_clones;
+        for (const auto& arg : args) {
+            arg_clones.push_back(arg ? arg->clone() : nullptr);
+        }
+        return std::make_unique<TApply>(std::move(fn_clone), std::move(arg_clones));
+    }
 
     json to_json() const override {
         if (!fn) {
@@ -224,11 +337,42 @@ struct TApply : public TExpr {
             out += "?nullptr";
         }
         for (const auto& arg : args) {
-            out += " ";
-            if (arg) {
-                out += "(" + arg->to_string() + ")";
+            if (is_a<TExpr>(arg)) {
+                out += "; ";
+                if (arg) {
+                    out += arg->to_string();
+                } else {
+                    out += "?nullptr";
+                }
             } else {
-                out += "(?nullptr)";
+                out += " ";
+                if (arg) {
+                    out += "(" + arg->to_string() + ")";
+                } else {
+                    out += "(?nullptr)";
+                }
+            }
+        }
+        return out;
+    }
+
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out = std::string(depth, ' ') + (is_exact() ? "exact " : "apply ");
+        if (fn) {
+            out += fn->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        for (const auto& arg : args) {
+            if (auto t_arg = dynamic_cast<TExpr*>(arg.get())) {
+                out += "\n" + t_arg->to_tactic(depth);
+            } else {
+                out += " ";
+                if (arg) {
+                    out += "(" + arg->to_string() + ")";
+                } else {
+                    out += "(?nullptr)";
+                }
             }
         }
         return out;
@@ -249,6 +393,10 @@ struct TProof : public TExpr {
         }
     };
 
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<TProof>(expr ? downcast_unique<TExpr>(expr->clone()) : nullptr);
+    }
+
     json to_json() const override {
         if (!expr) {
             throw std::runtime_error("TProof missing expr");
@@ -261,21 +409,40 @@ struct TProof : public TExpr {
             return "?nullptr";
         return expr->to_string();
     }
+
+    std::string to_tactic(int depth) const noexcept override {
+        if (!expr)
+            return std::string(depth, ' ') + "?nullptr";
+        return expr->to_tactic(depth);
+    }
 };
 /* A theorem.
  * e.x. theorem ex_falso type False -> p apply False.elim
  */
 struct TTheorem : public TExpr {
     std::string name;
+    std::vector<std::unique_ptr<LBinder>> params;
     std::unique_ptr<LExpr> type;
     std::unique_ptr<TProof> proof;
-    TTheorem(std::string name, std::unique_ptr<LExpr> type, std::unique_ptr<TProof> proof): name(std::move(name)), type(std::move(type)), proof(std::move(proof)) {
+    TTheorem(std::string name, std::vector<std::unique_ptr<LBinder>> params, std::unique_ptr<LExpr> type, std::unique_ptr<TProof> proof): name(std::move(name)), params(std::move(params)), type(std::move(type)), proof(std::move(proof)) {
         if (type) {
             type->parent = this;
         }
         if (proof) {
             proof->parent = this;
         }
+        for (auto& param : this->params) {
+            if (param) {
+                param->parent = this;
+            }
+        }
+    }
+    std::unique_ptr<LExpr> clone() const override {
+        std::vector<std::unique_ptr<LBinder>> param_clones;
+        for (const auto& param : params) {
+            param_clones.push_back(param ? downcast_unique<LBinder>(param->clone()) : nullptr);
+        }
+        return std::make_unique<TTheorem>(name, std::move(param_clones), type ? type->clone() : nullptr, proof ? downcast_unique<TProof>(proof->clone()) : nullptr);
     }
     json to_json() const override {
         if (!type) {
@@ -284,11 +451,26 @@ struct TTheorem : public TExpr {
         if (!proof) {
             throw std::runtime_error("TTheorem " + name + " missing proof");
         }
-        return json{{"kind", "theorem"}, {"name", name}, {"type", type->to_json()}, {"proof", proof->to_json()}};
+        json jparams = json::array();
+        for (const auto& param : params) {
+            if (!param) {
+                throw std::runtime_error("LTheorem " + name + " has null parameter");
+            }
+            jparams.push_back(param->to_json());
+        }
+        return json{{"kind", "theorem"}, {"name", name}, {"params", jparams}, {"type", type->to_json()}, {"proof", proof->to_json()}};
     };
 
     std::string to_string() const noexcept override {
-        std::string out = "theorem " + name + " : ";
+        std::string out = "theorem " + name + " ";
+        for (const auto& param : params) {
+            if (param) {
+                out += param->to_string() + " ";
+            } else {
+                out += "(?nullptr) ";
+            }
+        }
+        out += ": ";
         if (type) {
             out += type->to_string();
         } else {
@@ -299,6 +481,30 @@ struct TTheorem : public TExpr {
             out += proof->to_string();
         } else {
             out += "?nullptr";
+        }
+        return out;
+    }
+
+    std::string to_tactic(int depth) const noexcept override {
+        std::string out = std::string(depth, ' ') + "theorem " + name + " ";
+        for (const auto& param : params) {
+            if (param) {
+                out += param->to_string() + " ";
+            } else {
+                out += "(?nullptr) ";
+            }
+        }
+        out += ": ";
+        if (type) {
+            out += type->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        out += " := by\n";
+        if (proof) {
+            out += proof->to_tactic(depth+INDENT_SIZE);
+        } else {
+            out += std::string(depth+INDENT_SIZE, ' ') + "?nullptr";
         }
         return out;
     }

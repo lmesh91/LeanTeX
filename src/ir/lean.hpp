@@ -30,14 +30,109 @@ struct LExpr {
     // Converts the type to a string in a way that
     // resembles Lean syntax for debugging/output purposes
     virtual std::string to_string() const noexcept = 0;
+
+    // Creates a deep copy of an LExpr object
+    virtual std::unique_ptr<LExpr> clone() const = 0;
 };
+
+/*
+LBinder represents binder information in Lean, as used by LLambda and LForAll.
+This includes a name and a type, as well as what sort of binder it is.
+*/
+struct LBinder : public LExpr {
+    // there is no better name for this than "Info"
+    // since "type" and "kind" are both taken in the JSON representation
+    enum class Info { 
+        Explicit,
+        Implicit,
+        StrictImplicit,
+        InstImplicit
+    };
+    std::string name;
+    std::unique_ptr<LExpr> type;
+    Info info;
+    LBinder(std::string name, std::unique_ptr<LExpr> type, Info info) : name(std::move(name)), info(info) {
+        // Set pointers
+        if (type) {
+            this->type = std::move(type);
+            this->type->parent = this;
+        };
+    };
+
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<LBinder>(name, type ? type->clone() : nullptr, info);
+    }
+
+    json to_json() const override {
+        if (!type) {
+            throw std::runtime_error("LBinder missing type");
+        }
+        std::string info_str;
+        switch (info) {
+            case Info::Explicit:
+                info_str = "explicit";
+                break;
+            case Info::Implicit:
+                info_str = "implicit";
+                break;
+            case Info::StrictImplicit:
+                info_str = "strict_implicit";
+                break;
+            case Info::InstImplicit:
+                info_str = "inst_implicit";
+                break;
+        }
+        return json{{"kind", "binder"}, {"name", name}, {"type", type->to_json()}, {"info", info_str}};
+    }
+
+    std::string to_string() const noexcept override {
+        std::string _name = get_var_name(name);
+        std::string out;
+        switch (info) {
+            case Info::Explicit:
+                out += "(" + _name + " : ";
+                break;
+            case Info::Implicit:
+                out += "{" + _name + " : ";
+                break;
+            case Info::StrictImplicit:
+                out += "{{" + _name + " : ";
+                break;
+            case Info::InstImplicit:
+                out += "[" + _name + " : ";
+                break;
+        }
+        if (type) {
+            out += type->to_string();
+        } else {
+            out += "?nullptr";
+        }
+        switch (info) {
+            case Info::Explicit:
+                out += ")";
+                break;
+            case Info::Implicit:
+                out += "}";
+                break;
+            case Info::StrictImplicit:
+                out += "}}";
+                break;
+            case Info::InstImplicit:
+                out += "]";
+                break;
+        }
+        return out;
+    }
+};
+
+
 
 /*
 LVar covers all types of variables in Lean IR:
 - The original type is stored in the "type" field.
 - Bound variables store their indices.
 - Free variables and metavariables store their names.
-- Solved variables store their names and are marked as solved.
+- Solved variables store their names and types and are marked as solved.
 */
 struct LVar : public LExpr {
     enum class Type {
@@ -45,33 +140,49 @@ struct LVar : public LExpr {
         Free,
         Meta
     };
-    Type type;
+    Type var_type;
+    std::unique_ptr<LExpr> type;
     std::string name;
     bool solved;
-    unsigned int index;
+    int index;
 
     // Bound variable constructor
-    LVar(int index) : type(Type::Bound), name(""), solved(false), index(index) {};
+    LVar(int index) : var_type(Type::Bound), name(""), solved(false), index(index) {};
     // Free variable or metavariable constructor
-    LVar(Type type, std::string name) : type(type), name(std::move(name)), solved(false), index(-1) {};
+    LVar(Type type, std::string name) : var_type(type), name(std::move(name)), solved(false), index(-1) {};
+
+    std::unique_ptr<LExpr> clone() const override {
+        std::unique_ptr<LVar> out = std::make_unique<LVar>(var_type, name);
+        out->solved = solved;
+        out->index = index;
+        if (type) {
+            out->type = type->clone();
+        }
+        return out;
+    }
 
     // Mark the variable as solved with a given name
     // This should be called for every LVar object when converting to Lean IR,
     // once the original name of the variable has been figured out.
-    bool solve(std::string solution_name) {
+    bool solve(std::unique_ptr<LBinder> bin) {
         if (solved) {
+            log("Variable "+bin->name+" solved twice", LogLevel::WARNING);
             return false;
         }
-        name = std::move(solution_name);
+        name = bin->name;
+        type = bin->type->clone();
         solved = true;
         return true;
     };
 
     json to_json() const override {
         if (solved) {
-            return json{{"kind", "var"}, {"name", name}};
+            if (!type) {
+                throw std::runtime_error("Solved LVar missing type");
+            }
+            return json{{"kind", "var"}, {"name", name}, {"type", type->to_json()}};
         }
-        switch (type) {
+        switch (var_type) {
             case Type::Bound:
                 return json{{"kind", "bvar"}, {"index", index}};
             case Type::Free:
@@ -82,26 +193,11 @@ struct LVar : public LExpr {
         return json{};
     }
     std::string to_string() const noexcept override {
-        std::string _name = name;
-        // If the name ends with a dot followed by one or more digits (e.g. "x._@._internal._hyg.7"),
-        // treat it as inaccessible and replace with the user-friendly version "x!7".
-        auto pos = _name.rfind('.');
-        if (pos != std::string::npos && pos + 1 < _name.size()) {
-            bool all_digits = true;
-            for (size_t i = pos + 1; i < _name.size(); ++i) {
-                if (!std::isdigit(static_cast<unsigned char>(_name[i]))) {
-                    all_digits = false;
-                    break;
-                }
-            }
-            if (all_digits) {
-                _name = _name.substr(0, _name.find('.')) + "!" + _name.substr(pos+1);
-            }
-        }
+        std::string _name = get_var_name(name);
         if (solved) {
             return _name;
         }
-        switch (type) {
+        switch (var_type) {
             case Type::Bound:
                 return "?b." + std::to_string(index);
             case Type::Free:
@@ -142,6 +238,24 @@ struct LLevel {
     LLevel(Type type, std::unique_ptr<LLevel> arg1, std::unique_ptr<LLevel> arg2) : type(type), name(""), arg1(std::move(arg1)), arg2(std::move(arg2)) {};
     LLevel(Type type, std::string name) : type(type), name(std::move(name)), arg1(nullptr), arg2(nullptr) {};
     
+    std::unique_ptr<LLevel> clone() const {
+        switch (type) {
+            case Type::Zero:
+                return std::make_unique<LLevel>();
+            case Type::Succ:
+                return std::make_unique<LLevel>(Type::Succ, arg1 ? arg1->clone() : nullptr);
+            case Type::Max:
+                return std::make_unique<LLevel>(Type::Max, arg1 ? arg1->clone() : nullptr, arg2 ? arg2->clone() : nullptr);
+            case Type::IMax:
+                return std::make_unique<LLevel>(Type::IMax, arg1 ? arg1->clone() : nullptr, arg2 ? arg2->clone() : nullptr);
+            case Type::Param:
+                return std::make_unique<LLevel>(Type::Param, name);
+            case Type::Meta:
+                return std::make_unique<LLevel>(Type::Meta, name);
+        }
+        return nullptr;
+    }
+
     // Gets the raw representation of the level from combining parts
     // Note: There are some slight shortcomings to this function, most notably
     // if max/imax are combined with named levels.
@@ -225,6 +339,10 @@ struct LSort : public LExpr {
 
     LSort(std::unique_ptr<LLevel> level) : level(std::move(level)) {};
 
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<LSort>(level ? level->clone() : nullptr);
+    }
+
     json to_json() const override {
         if (!level) {
             throw std::runtime_error("LSort missing level");
@@ -251,12 +369,48 @@ struct LSort : public LExpr {
 LConst represents constants in Lean.
 This is separated from LVar as the difference between variables and constants
 are crucial for translation into natural language.
+The type of this constant may be "solved" during conversion to Lean IR.
 */
 struct LConst : public LExpr {
+    struct Meta {
+        std::vector<std::string> levels;
+        std::unique_ptr<LExpr> expr;
+
+        Meta clone() const {
+            return {levels, expr ? expr->clone() : nullptr};
+        }
+    };
     std::string name;
     std::vector<std::unique_ptr<LLevel>> levels;
+    LConst::Meta meta;
+    bool solved = false;
 
-    LConst(std::string name, std::vector<std::unique_ptr<LLevel>> levels) : name(std::move(name)), levels(std::move(levels)) {};
+    LConst(std::string name, std::vector<std::unique_ptr<LLevel>> levels) : name(std::move(name)), levels(std::move(levels)), meta({}, nullptr) {};
+
+    std::unique_ptr<LExpr> clone() const override {
+        std::vector<std::unique_ptr<LLevel>> lvl_clones;
+        for (const auto& lvl : levels) {
+            lvl_clones.push_back(lvl ? lvl->clone() : nullptr);
+        }
+        auto out = std::make_unique<LConst>(name, std::move(lvl_clones));
+        if (solved) {
+            out->solved = true;
+            out->meta.levels = meta.levels;
+            out->meta.expr = meta.expr->clone();
+        }
+        return out;
+    }
+
+    bool solve(const LConst::Meta& m) {
+        if (!solved) {
+            solved = true;
+            meta.expr = m.expr->clone();
+            meta.levels = m.levels;
+            return true;
+        } else {
+            return false;
+        }
+    }
 
     json to_json() const override {
         json jlevels = json::array();
@@ -265,6 +419,9 @@ struct LConst : public LExpr {
                 throw std::runtime_error("LConst " + name + " has null level");
             }
             jlevels.push_back(level->to_json());
+        }
+        if (solved && meta.expr) {
+            return json{{"kind", "const"}, {"name", name}, {"levels", jlevels}, {"type", meta.expr->to_json()}};
         }
         return json{{"kind", "const"}, {"name", name}, {"levels", jlevels}};
     }
@@ -320,6 +477,16 @@ struct LApp : public LExpr {
         }
     };
 
+    std::unique_ptr<LExpr> clone() const override {
+        std::unique_ptr<LExpr> fn_clone = fn ? fn->clone() : nullptr;
+        std::unique_ptr<LApp> out = std::make_unique<LApp>(std::move(fn_clone), nullptr);
+        out->args.clear();
+        for (const auto& arg : args) {
+            out->args.push_back(arg ? arg->clone() : nullptr);
+        }
+        return out;
+    }
+
     json to_json() const override {
         if (!fn) {
             throw std::runtime_error("LApp missing function");
@@ -352,110 +519,6 @@ struct LApp : public LExpr {
         return out;
     }
 };
-
-/*
-LBinder represents binder information in Lean, as used by LLambda and LForAll.
-This includes a name and a type, as well as what sort of binder it is.
-*/
-struct LBinder : public LExpr {
-    // there is no better name for this than "Info"
-    // since "type" and "kind" are both taken in the JSON representation
-    enum class Info { 
-        Explicit,
-        Implicit,
-        StrictImplicit,
-        InstImplicit
-    };
-    std::string name;
-    std::unique_ptr<LExpr> type;
-    Info info;
-    LBinder(std::string name, std::unique_ptr<LExpr> type, Info info) : name(std::move(name)), info(info) {
-        // Set pointers
-        if (type) {
-            this->type = std::move(type);
-            this->type->parent = this;
-        };
-    };
-
-    json to_json() const override {
-        if (!type) {
-            throw std::runtime_error("LBinder missing type");
-        }
-        std::string info_str;
-        switch (info) {
-            case Info::Explicit:
-                info_str = "explicit";
-                break;
-            case Info::Implicit:
-                info_str = "implicit";
-                break;
-            case Info::StrictImplicit:
-                info_str = "strict_implicit";
-                break;
-            case Info::InstImplicit:
-                info_str = "inst_implicit";
-                break;
-        }
-        return json{{"kind", "binder"}, {"name", name}, {"type", type->to_json()}, {"info", info_str}};
-    }
-
-    std::string to_string() const noexcept override {
-        std::string _name = name;
-        // If the name ends with a dot followed by one or more digits (e.g. "x._@._internal._hyg.7"),
-        // treat it as inaccessible and replace with the user-friendly version "x!7".
-        auto pos = _name.rfind('.');
-        if (pos != std::string::npos && pos + 1 < _name.size()) {
-            bool all_digits = true;
-            for (size_t i = pos + 1; i < _name.size(); ++i) {
-                if (!std::isdigit(static_cast<unsigned char>(_name[i]))) {
-                    all_digits = false;
-                    break;
-                }
-            }
-            if (all_digits) {
-                _name = _name.substr(0, _name.find('.')) + "!" + _name.substr(pos+1);
-            }
-        }
-
-        std::string out;
-        switch (info) {
-            case Info::Explicit:
-                out += "(" + _name + " : ";
-                break;
-            case Info::Implicit:
-                out += "{" + _name + " : ";
-                break;
-            case Info::StrictImplicit:
-                out += "{{" + _name + " : ";
-                break;
-            case Info::InstImplicit:
-                out += "[" + _name + " : ";
-                break;
-        }
-        if (type) {
-            out += type->to_string();
-        } else {
-            out += "?nullptr";
-        }
-        switch (info) {
-            case Info::Explicit:
-                out += ")";
-                break;
-            case Info::Implicit:
-                out += "}";
-                break;
-            case Info::StrictImplicit:
-                out += "}}";
-                break;
-            case Info::InstImplicit:
-                out += "]";
-                break;
-        }
-        return out;
-    }
-};
-
-
 /*
 LLambda represents lambda abstractions in Lean, which are done using the `fun` keyword.
 Unlike in Lean Expr, nested applications are flattened.
@@ -486,6 +549,16 @@ struct LLambda : public LExpr {
             }
         }
     };
+
+    std::unique_ptr<LExpr> clone() const override {
+        std::unique_ptr<LExpr> body_clone = body ? body->clone() : nullptr;
+        std::unique_ptr<LLambda> out = std::make_unique<LLambda>(nullptr, std::move(body_clone));
+        out->binders.clear();
+        for (const auto& binder : binders) {
+            out->binders.push_back(binder ? downcast_unique<LBinder>(binder->clone()) : nullptr);
+        }
+        return out;
+    }
 
     json to_json() const override {
         if (!body) {
@@ -550,6 +623,16 @@ struct LForAll : public LExpr {
         }
     };
 
+    std::unique_ptr<LExpr> clone() const override {
+        std::unique_ptr<LExpr> body_clone = body ? body->clone() : nullptr;
+        std::unique_ptr<LForAll> out = std::make_unique<LForAll>(nullptr, std::move(body_clone));
+        out->binders.clear();
+        for (const auto& binder : binders) {
+            out->binders.push_back(binder ? downcast_unique<LBinder>(binder->clone()) : nullptr);
+        }
+        return out;
+    }
+
     json to_json() const override {
         if (!body) {
             throw std::runtime_error("LForAll missing body");
@@ -607,6 +690,10 @@ struct LLet : public LExpr {
         }
     };
 
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<LLet>(name, type ? type->clone() : nullptr, value ? value->clone() : nullptr, body ? body->clone() : nullptr, nondep);
+    }
+
     json to_json() const override {
         if (!type) {
             throw std::runtime_error("LLet missing type");
@@ -662,6 +749,14 @@ struct LLiteral : public LExpr {
     // Natural number literal constructor
     LLiteral(unsigned int value) : type(Type::Nat), str_value(""), nat_value(value) {};
 
+    std::unique_ptr<LExpr> clone() const override {
+        if (type == Type::String) {
+            return std::make_unique<LLiteral>(str_value);
+        } else {
+            return std::make_unique<LLiteral>(nat_value);
+        }
+    }
+
     json to_json() const override {
         switch (type) {
             case Type::String:
@@ -702,6 +797,10 @@ struct LProj : LExpr {
         }
     };
 
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<LProj>(name, idx, structE ? structE->clone() : nullptr);
+    }
+
     json to_json() const override {
         if (!structE) {
             throw std::runtime_error("LProj missing struct");
@@ -738,6 +837,10 @@ struct LTermProof : public LProof {
         }
     };
 
+    std::unique_ptr<LExpr> clone() const override {
+        return std::make_unique<LTermProof>(expr ? expr->clone() : nullptr);
+    }
+
     json to_json() const override {
         if (!expr) {
             throw std::runtime_error("LTermProof missing expr");
@@ -773,6 +876,14 @@ struct LTheorem : public LExpr {
             }
         }
     };
+
+    std::unique_ptr<LExpr> clone() const override {
+        std::vector<std::unique_ptr<LBinder>> param_clones;
+        for (const auto& param : params) {
+            param_clones.push_back(param ? downcast_unique<LBinder>(param->clone()) : nullptr);
+        }
+        return std::make_unique<LTheorem>(name, std::move(param_clones), type ? type->clone() : nullptr, proof ? downcast_unique<LProof>(proof->clone()) : nullptr);
+    }
 
     json to_json() const override {
         if (!type) {

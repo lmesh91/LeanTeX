@@ -86,6 +86,20 @@ std::unique_ptr<Derived> downcast_unique(std::unique_ptr<Base>& base_ptr) {
     return std::unique_ptr<Derived>(derived_ptr); // Transfer ownership to Derived unique_ptr
 }
 
+// Downcast from an rvalue unique_ptr: transfer ownership if the dynamic_cast succeeds
+template <typename Derived, typename Base>
+std::unique_ptr<Derived> downcast_unique(std::unique_ptr<Base>&& base_ptr) {
+    if (!base_ptr) {
+        return nullptr;
+    }
+    Derived* derived_ptr = dynamic_cast<Derived*>(base_ptr.get());
+    if (!derived_ptr) {
+        return nullptr;
+    }
+    base_ptr.release(); // Release ownership from base_ptr
+    return std::unique_ptr<Derived>(derived_ptr); // Transfer ownership to Derived unique_ptr
+}
+
 // Checks if a downcast is possible, without transferring ownership
 template <typename Derived, typename Base>
 bool is_a(std::unique_ptr<Base>& base_ptr) {
@@ -107,3 +121,6 @@ bool is_a(const std::unique_ptr<Base>& base_ptr) {
 
 // converts text string to allowable LaTeX form; for now, turns _ into "\_" and \ into "\\"
 std::string latexify(const std::string& str);
+
+// Returns a human-readable name, even for internal variables
+std::string get_var_name(std::string name);
