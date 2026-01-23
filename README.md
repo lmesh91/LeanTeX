@@ -21,7 +21,7 @@ Options:
   -q, --quiet        Set quiet logging.
   --language         Specify language used for translation.
 ```
-Note that the input file must be in a Lean project that has already been built using Lean v4.24.0. For more details about the INI configuration file and the command options, see the [Documentation](https://github.com/lmesh91/LeanTeX/docs.md).
+Note that the input file must be in a Lean project that has already been built using Lean v4.24.0. For more details about the INI configuration file and the command options, see the [Documentation](https://github.com/lmesh91/LeanTeX/blob/main/docs.md).
 # Installation
 1. Download the latest release from the [Releases](https://github.com/lmesh91/LeanTeX/releases) page, or build the source code from scratch.
 2. Install [Lean 4](https://lean-lang.org/install/).
