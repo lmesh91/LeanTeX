@@ -3,6 +3,7 @@ import Lean.Elab.Command
 import Lean.Elab.Term
 import Lean.Meta
 
+
 namespace LeanTeX
 
 -- Helper functions for exprToLaTeX
@@ -28,20 +29,34 @@ def isArrow (e : Lean.Expr) : Bool :=
   | .forallE _ _ body _ => isArrowH body 0
   | _ => True
 
+-- Wraps an expression in `\left` and `\right` parentheses.
+def texBracket (l : String) (f : Std.Format) (r : String) : Std.Format :=
+  Std.Format.bracket ("\\left" ++ l) f ("\\right" ++ r)
+
+def texParen (f : Std.Format) : Std.Format :=
+  texBracket "(" f ")"
+
+-- Constants representing priorities of things handled by expressions
+def lambdaPrec : Nat := 0
+def arrowPrec : Nat := 5 -- Slightly higher due to ⟹ notation in LaTeX
+def forAllPrec : Nat := 0
+def letPrec : Nat := 0
+def projPrec : Nat := 0
+
 -- This is pretty much placeholder right now
-partial def exprToLaTeX (e : Lean.Expr) (bs : List Lean.Name) : Lean.Elab.TermElabM Std.Format := do
+partial def exprToLaTeX (e : Lean.Expr) (prec : Nat) (bs : List Lean.Name) : Lean.Elab.TermElabM Std.Format := do
   let me ← Lean.instantiateMVars e
   match me with
   -- Bound variable: Return name from bs
   | .bvar i => do
-  if hi : i < bs.length then
-    return f!"{bs[i]}"
-  else
-    return f!"b_\{{i-bs.length}}"
-  -- Free variable: Return user-facing name
+    if hi : i < bs.length then
+      return f!"{bs[i]}"
+    else -- Loose bound variable
+      return f!"b_\{{i-bs.length}}"
+    -- Free variable: Return user-facing name
   | .fvar i => do
-  have decl : Lean.LocalDecl := ←i.getDecl
-  return f!"{decl.userName}"
+    have decl : Lean.LocalDecl := ←i.getDecl
+    return f!"{decl.userName}"
   -- Metavariable: Return an underscore
   | .mvar i => return f!"\\_"
   -- Sort: Currently specialize for Prop and Type
@@ -53,44 +68,71 @@ partial def exprToLaTeX (e : Lean.Expr) (bs : List Lean.Name) : Lean.Elab.TermEl
     else
       return f!"\\mathbb\{S}_\{{u}}" --𝕊ᵤ
   -- Constant: Return name
-  | .const n _ => return f!"{n}"
+  | .const n _ => return f!"\\mathrm\{{n}}"
   -- Function application
   -- Translates to "fn(arg₁, arg₂, ..., argₙ)"
   -- TODO: specialize for individual functions
   | .app _ _ => do
     let fn : Lean.Expr := me.getAppFn
     let args : Array Lean.Expr := me.getAppArgs
-    let fargs : List Std.Format ← args.toList.mapM (exprToLaTeX · bs)
-    return f!"\\mathrm\{" ++ (←exprToLaTeX fn bs) ++ f!"}(" ++ Std.Format.joinSep fargs f!", " ++ f!")"
+    let fargs : List Std.Format ← args.toList.mapM (exprToLaTeX · prec bs)
+    return (←exprToLaTeX fn prec bs) ++ texParen (Std.Format.joinSep fargs f!", ")
+  -- All basic connectives are left-associative
+  -- by default and have low precedence
   -- Lambda: Use ↦ notation
   -- Translates to "n ∈ t ↦ b"
-  | .lam n t b _ => return f!"{n} \\in " ++ (←exprToLaTeX t bs) ++ f!" \\mapsto " ++ (←exprToLaTeX b (n :: bs))
+  | .lam n t b _ => do
+    let lhs := f!"{n} \\in " ++ (←exprToLaTeX t (lambdaPrec+1) bs)
+    let rhs ← exprToLaTeX b lambdaPrec (n :: bs)
+    let out := lhs ++ f!" \\mapsto " ++ rhs
+    if prec > lambdaPrec then
+      return texParen out
+    else
+      return out
   -- ForAll: Use arrow or forall notation
   | .forallE n t b _ => do
     if isArrow me then
-      -- Translates to "t ⇒ b"
-      return (←exprToLaTeX t bs) ++ f!" \\implies " ++ (←exprToLaTeX b (n :: bs))
+      -- Translates to "t ⟹ b"
+      let lhs ← exprToLaTeX t (arrowPrec+1) bs
+      let rhs ← exprToLaTeX b arrowPrec (n :: bs)
+      let out := lhs ++ f!" \\implies " ++ rhs
+      if prec > arrowPrec then
+        return texParen out
+      else
+        return out
     else
       -- Translates to "∀n ∈ t, b"
-      return f!"\\forall {n} \\in " ++ (←exprToLaTeX t bs) ++ f!", " ++ (←exprToLaTeX b (n :: bs))
+      let lhs := f!"\\forall {n} \\in " ++ (←exprToLaTeX t (forAllPrec+1) bs)
+      let rhs ← exprToLaTeX b forAllPrec (n :: bs)
+      let out := lhs ++ f!", " ++ rhs
+      if prec > forAllPrec then
+        return texParen out
+      else
+        return out
   -- Let: Use := notation (placeholder)
   -- Translates to "n : t := v; b"
-  | .letE n t v b _ => return f!"{n} : " ++ (←exprToLaTeX t bs) ++ f!" := "
-                              ++ (←exprToLaTeX v bs) ++ f!"; " ++ (←exprToLaTeX b (n :: bs))
+  | .letE n t v b _ => do
+    let lhs := f!"{n} : " ++ (←exprToLaTeX t (letPrec+1) bs) ++ f!" := " ++ (←exprToLaTeX v (letPrec+1) bs)
+    let rhs ← exprToLaTeX b letPrec (n :: bs)
+    let out := lhs ++ f!"; " ++ rhs
+    if prec > letPrec then
+      return texParen out
+    else
+      return out
   -- Literals: Replace naturals with their values, surround strings in quotes
   | .lit l => match l with
     | .natVal n => return f!"{n}"
     | .strVal s => return f!"``{s}\""
   -- Metadata: Ignore
-  | .mdata _ exp => return ←exprToLaTeX exp bs
+  | .mdata _ exp => return ←exprToLaTeX exp prec bs
   -- Projections: Use dot notation (placeholder)
   -- Translates to "s.i"
-  | .proj _ i s => return (←exprToLaTeX s bs) ++ f!".{i}"
+  | .proj _ i s => return (←exprToLaTeX s projPrec bs) ++ f!".{i}"
 
 elab "#latex " termStx:term : command => do
   Lean.Elab.Command.liftTermElabM do
     let e ← Lean.Elab.Term.elabTerm termStx none
-    let latex ← exprToLaTeX e []
+    let latex ← exprToLaTeX e 0 []
     Lean.logInfo latex
 
 end LeanTeX
