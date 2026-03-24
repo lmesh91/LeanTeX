@@ -55,7 +55,7 @@ def braces (doc : Doc) : Doc :=
 def cmd (name : String) (args : Array Doc := #[]) : Doc :=
   concat <| #[.atom ("\\" ++ name)] ++ args.map braces
 
-private def protectAt (ctxPrec : Prec) (doc : Doc) : Doc :=
+def protectAt (ctxPrec : Prec) (doc : Doc) : Doc :=
   if ctxPrec > doc.prec then
     parens doc
   else

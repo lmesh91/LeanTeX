@@ -12,3 +12,4 @@ root = "Main"
 [[lean_exe]]
 name = "leantex-test"
 root = "Test"
+supportInterpreter = true

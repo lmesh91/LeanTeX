@@ -11,6 +11,19 @@ def assertEqString (label expected actual : String) : IO Unit := do
 def checkRender (label : String) (doc : Doc) (expected : String) : IO Unit :=
   assertEqString label expected doc.render
 
+def mkTestEnv : IO Lean.Environment := do
+  Lean.initSearchPath (← Lean.findSysroot)
+  Lean.importModules #[{ module := `Init }] {} (loadExts := true)
+
+def runMetaWithEnv (env : Lean.Environment) (x : Lean.Meta.MetaM α) : IO α := do
+  let coreCtx : Lean.Core.Context := {
+    fileName := "<test>"
+    fileMap := Lean.FileMap.ofString ""
+  }
+  let coreState : Lean.Core.State := { env := env }
+  let (a, _, _) ← x.toIO coreCtx coreState
+  pure a
+
 def assert (label : String) (cond : Bool) : IO Unit := do
   unless cond do
     throw <| IO.userError s!"{label} failed"
@@ -98,8 +111,69 @@ def notationTests : IO Nat := do
   assertEqCounted count "local entry order 3" `Nat.add localEntries[2]!.declName
   count.get
 
+def exprTests : IO Nat := do
+  let count ← IO.mkRef 0
+  let env ← mkTestEnv
+
+  let checkExprRender (label : String) (env : Lean.Environment) (renderM : Lean.Meta.MetaM String)
+      (expected : String) : IO Unit := do
+    let actual ← runMetaWithEnv env renderM
+    assertEqString label expected actual
+    count.modify (· + 1)
+
+  checkExprRender "const fallback" env (renderExprString (Lean.mkConst `Nat)) "\\mathsf{Nat}"
+  checkExprRender "app fallback" env (renderExprString (Lean.mkApp (Lean.mkConst `Nat.succ) (Lean.mkNatLit 3)))
+    "\\mathsf{Nat.succ}\\left(3\\right)"
+
+  let envAdd := registerNotation env `Nat.add (.infix 10 .left (Doc.atom "+"))
+  checkExprRender "infix notation" envAdd
+    (renderExprString (Lean.mkAppN (Lean.mkConst `Nat.add) #[Lean.mkNatLit 1, Lean.mkNatLit 2]))
+    "1 + 2"
+  checkExprRender "partial infix fallback" envAdd
+    (renderExprString (Lean.mkApp (Lean.mkConst `Nat.add) (Lean.mkNatLit 1)))
+    "\\mathsf{Nat.add}\\left(1\\right)"
+
+  let envSucc := registerNotation env `Nat.succ (.command "sin")
+  checkExprRender "command notation" envSucc
+    (renderExprString (Lean.mkApp (Lean.mkConst `Nat.succ) (Lean.mkNatLit 3)))
+    "\\sin{3}"
+
+  let envMul := registerNotation env `Nat.mul <|
+    .template 2 20 #[
+      .arg 0,
+      .text (Doc.atom " \\star "),
+      .arg 1
+    ]
+  checkExprRender "template notation" envMul
+    (renderExprString (Lean.mkAppN (Lean.mkConst `Nat.mul) #[Lean.mkNatLit 2, Lean.mkNatLit 3]))
+    "2 \\star 3"
+
+  checkExprRender "arrow fallback" env
+    (renderExprString (Lean.Expr.forallE `x (Lean.mkConst `Nat) (Lean.mkConst `Nat) .default))
+    "\\mathsf{Nat} \\to \\mathsf{Nat}"
+
+  checkExprRender "dependent forall" env
+    (renderExprString (Lean.Expr.forallE `x (Lean.mkConst `Nat) (.bvar 0) .default))
+    "\\forall x : \\mathsf{Nat}, x"
+
+  checkExprRender "lambda freshening" env
+    (renderExprString (Lean.Expr.lam `x (Lean.mkConst `Nat)
+      (Lean.Expr.lam `x (Lean.mkConst `Nat) (.bvar 0) .default) .default))
+    "\\lambda x : \\mathsf{Nat}, \\lambda x\\_1 : \\mathsf{Nat}, x\\_1"
+
+  checkExprRender "let fallback" env
+    (renderExprString (Lean.Expr.letE `x (Lean.mkConst `Nat) (Lean.mkNatLit 1) (.bvar 0) false))
+    "\\mathsf{let}\\,x : \\mathsf{Nat} := 1; x"
+
+  checkExprRender "fvar fallback" env
+    (Lean.Meta.withLocalDecl `x .default (Lean.mkConst `Nat) fun x => renderExprString x)
+    "x"
+
+  count.get
+
 def main : IO Unit := do
   for (label, doc, expected) in tests do
     checkRender label doc expected
   let notationCount ← notationTests
-  IO.println s!"{tests.length + notationCount} tests passed"
+  let exprCount ← exprTests
+  IO.println s!"{tests.length + notationCount + exprCount} tests passed"
