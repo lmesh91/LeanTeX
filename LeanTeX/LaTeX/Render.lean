@@ -4,14 +4,18 @@ import LeanTeX.LaTeX.Notation
 namespace LeanTeX
 namespace LaTeX
 
+-- Defines the precedence of builtin operations used in the `Expr` tree.
 def binderPrec : Prec := 1
 def arrowPrec : Prec := 2
 def appPrec : Prec := 70
 def projPrec : Prec := 90
 
+-- The rendering context tracks the names of bound variables in scope so
+-- they can be rendered as names instead of de Bruijn indices.
 private structure RenderCtx where
   boundNames : Array String := #[]
 
+-- Escapes special characters in a string so it can be safely rendered in LaTeX.
 private def escapeLaTeX (s : String) : String :=
   s.foldl (init := "") fun acc c =>
     acc ++ match c with
@@ -24,15 +28,21 @@ private def escapeLaTeX (s : String) : String :=
     | '&' => "\\&"
     | _ => String.singleton c
 
+-- Renders a name as a LaTeX atom, escaping special characters.
+-- TODO: Convert Unicode characters to LaTeX commands where possible (e.g. α -> \alpha), and
+--       parse common patterns like subscripts (e.g. x_12 -> x_{12}).
 private def renderNameAtom (s : String) : Doc :=
   Doc.atom (escapeLaTeX s)
 
+-- Renders a constant name as a LaTeX atom, using \mathsf to distinguish it from variables.
 private def renderConstName (declName : Lean.Name) : Doc :=
   Doc.cmd "mathsf" #[renderNameAtom declName.toString]
 
+-- Converts a universe level as a LaTeX using its string representation.
 private def renderLevel (u : Lean.Level) : Doc :=
   renderNameAtom (toString u)
 
+-- Renders a universe level as a LaTeX atom.
 private def renderSort (u : Lean.Level) : Doc :=
   match u with
   | .zero => Doc.cmd "mathsf" #[Doc.atom "Prop"]
@@ -40,9 +50,12 @@ private def renderSort (u : Lean.Level) : Doc :=
   | .succ v => Doc.subscript (Doc.cmd "mathsf" #[Doc.atom "Type"]) (renderLevel v)
   | _ => Doc.subscript (Doc.cmd "mathsf" #[Doc.atom "Sort"]) (renderLevel u)
 
+-- Renders an argument placeholder for a notation template when the index is out of bounds.
 private def fallbackArgDoc (index : Nat) : Doc :=
   renderNameAtom s!"?arg_{index}"
 
+-- Provides a fresh binder name based on a suggested name and the names already in use in the context.
+-- This ensures that binder names are always unique.
 private def freshBinderName (suggested : Lean.Name) (used : Array String) : String :=
   let base :=
     let s := suggested.toString
@@ -57,11 +70,13 @@ private def freshBinderName (suggested : Lean.Name) (used : Array String) : Stri
           return candidate
       s!"{base}_{used.size + 1}"
 
+-- Renders a binder by generating a fresh name and passing it to a continuation.
 private def withBinder (ctx : RenderCtx) (suggested : Lean.Name) (k : RenderCtx → String → Lean.Meta.MetaM Doc) :
     Lean.Meta.MetaM Doc := do
   let binderName := freshBinderName suggested ctx.boundNames
   k { ctx with boundNames := ctx.boundNames.push binderName } binderName
 
+-- Attempts to fetch the name of a bound variable from the context; returns none if the index is out of bounds and should be rendered as a de Bruijn index.
 private def getBVarName? (ctx : RenderCtx) (idx : Nat) : Option String :=
   if idx < ctx.boundNames.size then
     let pos := ctx.boundNames.size - 1 - idx
@@ -69,6 +84,7 @@ private def getBVarName? (ctx : RenderCtx) (idx : Nat) : Option String :=
   else
     none
 
+-- Joins a list of `Doc`s with commas, returning an empty `Doc` if the list is empty.
 private def joinWithComma (docs : Array Doc) : Doc :=
   if docs.size = 0 then
     Doc.empty
@@ -80,6 +96,7 @@ private def joinWithComma (docs : Array Doc) : Doc :=
         parts := parts.push docs[i]!
       Doc.concat parts
 
+-- Creates a `Doc` representing function application given a function and a list of arguments.
 private def applyDoc (fnDoc : Doc) (argDocs : Array Doc) : Doc :=
   if argDocs.isEmpty then
     fnDoc
@@ -99,9 +116,11 @@ private partial def binderOccurs (needle : Nat) : Lean.Expr → Bool
   | .proj _ _ struct => binderOccurs needle struct
   | _ => false
 
+-- Determines whether a forall expression is non-dependent (arrow) or dependent (forall).
 private def isNondependentArrow (body : Lean.Expr) : Bool :=
   !binderOccurs 0 body
 
+-- Extracts the visible (explicitly bound) arguments from a function application.
 private def getVisibleArgs (fn : Lean.Expr) (args : Array Lean.Expr) : Lean.Meta.MetaM (Array Lean.Expr) := do
   try
     let infos := (← Lean.Meta.getFunInfoNArgs fn args.size).paramInfo
@@ -116,26 +135,11 @@ private def getVisibleArgs (fn : Lean.Expr) (args : Array Lean.Expr) : Lean.Meta
   catch _ =>
     pure args
 
+-- The main rendering functions are mutually recursive
 mutual
 
-  -- Applications are rendered from the elaborated spine so registry-based notation can
-  -- decide whether a constant is infix, prefix, command-like, or a plain function call.
-  private partial def renderApp (ctx : RenderCtx) (fn : Lean.Expr) (args : Array Lean.Expr) : Lean.Meta.MetaM Doc := do
-    let fn ← Lean.instantiateMVars fn
-    match fn with
-    | .const declName _ =>
-        match findNotation? (← Lean.getEnv) declName with
-        | some spec => renderNotationApp ctx declName spec args
-        | none =>
-            let argDocs ← args.mapM (renderExprCore ctx)
-            pure <| applyDoc (renderConstName declName) argDocs
-    | _ =>
-        let headDoc ← renderExprCore ctx fn
-        let argDocs ← args.mapM (renderExprCore ctx)
-        pure <| applyDoc headDoc argDocs
-
-  -- Template and operator specs consume leading explicit arguments and leave any remainder
-  -- to the generic application fallback so partial and over-applied terms stay renderable.
+  -- Uses the notation specification to render an application of a constant.
+  -- If there are remaining arguments after this process, they are rendered with a fallback.
   private partial def renderNotationApp (ctx : RenderCtx) (declName : Lean.Name) (spec : NotationSpec) (args : Array Lean.Expr) :
       Lean.Meta.MetaM Doc := do
     let fallback := do
@@ -190,29 +194,47 @@ mutual
         else
           fallback
 
+  -- Core function for converting an expression to a `Doc`.
   private partial def renderExprCore (ctx : RenderCtx) (expr : Lean.Expr) : Lean.Meta.MetaM Doc := do
     let expr ← Lean.instantiateMVars expr
     if let some n := expr.nat? then
       return Doc.atom (toString n)
     match expr with
+    -- Bound variables are rendered using their names from the context when possible, and de Bruijn indices otherwise.
     | .bvar idx =>
         pure <| renderNameAtom <| getBVarName? ctx idx |>.getD s!"?bvar_{idx}"
+    -- Free variables are rendered using their user-facing name.
     | .fvar fvarId =>
         let decl ← fvarId.getDecl
         pure <| renderNameAtom decl.userName.toString
+    -- Metavariables are rendered as underscores.
     | .mvar _ =>
         pure <| Doc.atom "\\_"
+    -- Sorts are rendered using \mathsf{Prop}, \mathsf{Type}, or \mathsf{Sort} with subscripts for universe levels.
     | .sort u =>
         pure <| renderSort u
+    -- Constants are rendered using their notation if available, and otherwise using their name with \mathsf.
     | .const declName _ =>
         match findNotation? (← Lean.getEnv) declName with
         | some (.const doc) => pure doc
         | some (.command name) => pure (Doc.cmd name)
         | _ => pure (renderConstName declName)
+    -- Applications are rendered from the elaborated spine so registry-based notation can decide how to render them.
     | .app _ _ =>
         let fn := expr.getAppFn
         let args ← getVisibleArgs fn expr.getAppArgs
-        renderApp ctx fn args
+        match fn with
+        | .const declName _ =>
+            match findNotation? (← Lean.getEnv) declName with
+            | some spec => renderNotationApp ctx declName spec args
+            | none =>
+                let argDocs ← args.mapM (renderExprCore ctx)
+                pure <| applyDoc (renderConstName declName) argDocs
+        | _ =>
+            let headDoc ← renderExprCore ctx fn
+            let argDocs ← args.mapM (renderExprCore ctx)
+            pure <| applyDoc headDoc argDocs
+    -- Binders are rendered by generating a fresh name for the bound variable and passing it to a continuation that renders the type and body with the new name in scope.
     | .lam binderName binderType body _ =>
         withBinder ctx binderName fun ctx binderName => do
           let typeDoc ← renderExprCore ctx binderType
@@ -243,21 +265,26 @@ mutual
             valueDoc
           ]
           pure <| Doc.concat #[lhs, Doc.atom "; ", bodyDoc] binderPrec
+    -- Literals are rendered using their string representation, with strings escaped and wrapped in \mathtt to distinguish them from variables.
     | .lit (.natVal n) =>
         pure <| Doc.atom (toString n)
     | .lit (.strVal s) =>
         pure <| Doc.cmd "mathtt" #[Doc.atom ("\"" ++ escapeLaTeX s ++ "\"")]
+    -- Metadata is ignored for rendering purposes, so we just render the underlying expression.
     | .mdata _ expr =>
         renderExprCore ctx expr
+    -- Projections are rendered using the struct notation for projections, with the struct rendered and the field name appended with a dot.
     | .proj _ idx struct =>
         let structDoc ← renderExprCore ctx struct
         pure <| Doc.concat #[Doc.protectAt projPrec structDoc, Doc.atom s!".{idx}"] projPrec
 
 end
 
+-- The main entry point for rendering an expression, which initializes the rendering context and calls the core rendering function.
 def renderExpr (expr : Lean.Expr) : Lean.Meta.MetaM Doc :=
   renderExprCore {} expr
 
+-- A convenience function for rendering an expression directly to a string.
 def renderExprString (expr : Lean.Expr) : Lean.Meta.MetaM String := do
   pure (← renderExpr expr).render
 

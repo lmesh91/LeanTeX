@@ -27,13 +27,10 @@ inductive NotationSpec where
   | template (arity : Nat) (prec : Prec) (parts : Array TemplatePart)
   deriving Repr, Inhabited
 
-namespace NotationSpec
-
-def symbol (doc : Doc) : NotationSpec :=
-  .const doc
-
-end NotationSpec
-
+/--
+`NotationEntry` is a structure that pairs a declaration name with its notation specification.
+It is stored in a persistent environment extension, allowing us to query the notation for any declaration.
+-/
 structure NotationEntry where
   declName : Lean.Name
   spec : NotationSpec
