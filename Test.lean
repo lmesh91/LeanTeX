@@ -11,6 +11,34 @@ def assertEqString (label expected actual : String) : IO Unit := do
 def checkRender (label : String) (doc : Doc) (expected : String) : IO Unit :=
   assertEqString label expected doc.render
 
+def assert (label : String) (cond : Bool) : IO Unit := do
+  unless cond do
+    throw <| IO.userError s!"{label} failed"
+
+def assertEq [BEq α] [ToString α] (label : String) (expected actual : α) : IO Unit := do
+  if expected == actual then
+    pure ()
+  else
+    throw <| IO.userError s!"{label} failed\nexpected: {expected}\nactual:   {actual}"
+
+def assertSpecEq (label : String) (expected actual : Option NotationSpec) : IO Unit := do
+  let expectedStr := s!"{repr expected}"
+  let actualStr := s!"{repr actual}"
+  unless expectedStr == actualStr do
+    throw <| IO.userError s!"{label} failed\nexpected: {repr expected}\nactual:   {repr actual}"
+
+def assertCounted (count : IO.Ref Nat) (label : String) (cond : Bool) : IO Unit := do
+  assert label cond
+  count.modify (· + 1)
+
+def assertEqCounted [BEq α] [ToString α] (count : IO.Ref Nat) (label : String) (expected actual : α) : IO Unit := do
+  assertEq label expected actual
+  count.modify (· + 1)
+
+def assertSpecEqCounted (count : IO.Ref Nat) (label : String) (expected actual : Option NotationSpec) : IO Unit := do
+  assertSpecEq label expected actual
+  count.modify (· + 1)
+
 def tests : List (String × Doc × String) :=
   let a := Doc.atom "a"
   let b := Doc.atom "b"
@@ -42,7 +70,36 @@ def tests : List (String × Doc × String) :=
   , ("subscript", Doc.subscript a (add i plus one), "a_{i + 1}")
   ]
 
+def notationTests : IO Nat := do
+  let count ← IO.mkRef 0
+  let env0 ← Lean.mkEmptyEnvironment
+  assertCounted count "empty registry" (!(containsNotation env0 `Nat.add))
+  assertCounted count "empty lookup" ((findNotation? env0 `Nat.add).isNone)
+
+  let addSpec : NotationSpec := .infix 10 .left (Doc.atom "+")
+  let succSpec : NotationSpec := .postfix 30 (Doc.atom "!")
+  let addOverride : NotationSpec := .command "operatorname"
+
+  let env1 := registerNotation env0 `Nat.add addSpec
+  assertCounted count "contains inserted notation" (containsNotation env1 `Nat.add)
+  assertSpecEqCounted count "lookup inserted notation" (some addSpec) (findNotation? env1 `Nat.add)
+
+  let env2 := registerNotation env1 `Nat.succ succSpec
+  assertSpecEqCounted count "second lookup preserved first" (some addSpec) (findNotation? env2 `Nat.add)
+  assertSpecEqCounted count "second lookup added second" (some succSpec) (findNotation? env2 `Nat.succ)
+
+  let env3 := registerNotation env2 `Nat.add addOverride
+  assertSpecEqCounted count "override wins" (some addOverride) (findNotation? env3 `Nat.add)
+
+  let localEntries := getLocalNotationEntries env3
+  assertEqCounted count "local entry count" 3 localEntries.size
+  assertEqCounted count "local entry order 1" `Nat.add localEntries[0]!.declName
+  assertEqCounted count "local entry order 2" `Nat.succ localEntries[1]!.declName
+  assertEqCounted count "local entry order 3" `Nat.add localEntries[2]!.declName
+  count.get
+
 def main : IO Unit := do
   for (label, doc, expected) in tests do
     checkRender label doc expected
-  IO.println s!"{tests.length} tests passed"
+  let notationCount ← notationTests
+  IO.println s!"{tests.length + notationCount} tests passed"
