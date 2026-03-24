@@ -38,17 +38,16 @@ structure NotationEntry where
 
 abbrev NotationRegistry := Lean.NameMap NotationSpec
 
-private def addNotationEntry (registry : NotationRegistry) (entry : NotationEntry) : NotationRegistry :=
-  registry.insert entry.declName entry.spec
-
-private def notationRegistryFromImports (entries : Array (Array NotationEntry)) : NotationRegistry :=
-  Lean.mkStateFromImportedEntries addNotationEntry ({} : NotationRegistry) entries
-
-builtin_initialize notationExt : Lean.SimplePersistentEnvExtension NotationEntry NotationRegistry ←
+initialize notationExt : Lean.SimplePersistentEnvExtension NotationEntry NotationRegistry ←
   Lean.registerSimplePersistentEnvExtension {
     name := `LeanTeX.LaTeX.notationExt
-    addEntryFn := addNotationEntry
-    addImportedFn := notationRegistryFromImports
+    addEntryFn := fun registry entry =>
+      registry.insert entry.declName entry.spec
+    addImportedFn := fun entries =>
+      Lean.mkStateFromImportedEntries
+        (fun registry entry => registry.insert entry.declName entry.spec)
+        ({} : NotationRegistry)
+        entries
   }
 
 /--
@@ -62,7 +61,7 @@ def modifyNotation (declName : Lean.Name) (spec : NotationSpec) : Lean.CoreM Uni
   Lean.modifyEnv fun env => registerNotation env declName spec
 
 def getNotationRegistry (env : Lean.Environment) : NotationRegistry :=
-  Lean.SimplePersistentEnvExtension.getState notationExt env
+  notationExt.getState env
 
 def findNotation? (env : Lean.Environment) (declName : Lean.Name) : Option NotationSpec :=
   Lean.NameMap.find? (getNotationRegistry env) declName
@@ -74,7 +73,7 @@ def containsNotation (env : Lean.Environment) (declName : Lean.Name) : Bool :=
 Entries registered in the current module, returned in insertion order.
 -/
 def getLocalNotationEntries (env : Lean.Environment) : Array NotationEntry :=
-  Lean.SimplePersistentEnvExtension.getEntries notationExt env |>.reverse.toArray
+  notationExt.getEntries env |>.reverse.toArray
 
 end LaTeX
 end LeanTeX
