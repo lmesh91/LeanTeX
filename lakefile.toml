@@ -8,3 +8,7 @@ name = "LeanTeX"
 [[lean_exe]]
 name = "leantex"
 root = "Main"
+
+[[lean_exe]]
+name = "leantex-test"
+root = "Test"
