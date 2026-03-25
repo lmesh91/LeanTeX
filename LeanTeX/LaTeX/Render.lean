@@ -6,9 +6,9 @@ namespace LaTeX
 
 -- Defines the precedence of builtin operations used in the `Expr` tree.
 def binderPrec : Prec := 1
-def arrowPrec : Prec := 2
-def appPrec : Prec := 70
-def projPrec : Prec := 90
+def arrowPrec : Prec := 25
+def appPrec : Prec := 1023
+def projPrec : Prec := 1023
 
 -- The rendering context tracks the names of bound variables in scope so
 -- they can be rendered as names instead of de Bruijn indices.
@@ -183,9 +183,11 @@ mutual
           let rendered :=
             let partDocs := parts.map fun
               | .text doc => doc
-              | .arg index =>
+              | .arg index partPrec? =>
                   if h : index < renderedArgs.size then
-                    renderedArgs[index]
+                    match partPrec? with
+                    | some partPrec => Doc.protectAt partPrec renderedArgs[index]
+                    | none => renderedArgs[index]
                   else
                     fallbackArgDoc index
             Doc.concat partDocs prec

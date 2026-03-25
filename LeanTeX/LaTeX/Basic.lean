@@ -85,11 +85,11 @@ def protectAt (ctxPrec : Prec) (doc : Doc) : Doc :=
 
 -- Creates a `Doc` representing a prefix operator applied to an argument, ensuring that parentheses are added as needed based on the precedence levels.
 def prefixOp (prec : Prec) (op : Doc) (arg : Doc) : Doc :=
-  concat #[protectAt prec op, space, protectAt (prec + 1) arg] prec
+  concat #[protectAt prec op, space, protectAt prec arg] prec
 
 -- Creates a `Doc` representing a postfix operator applied to an argument, ensuring that parentheses are added as needed based on the precedence levels.
 def postfixOp (prec : Prec) (arg : Doc) (op : Doc) : Doc :=
-  concat #[protectAt (prec + 1) arg, protectAt prec op] prec
+  concat #[protectAt prec arg, protectAt prec op] prec
 
 -- Creates a `Doc` representing an infix operator applied to two arguments, ensuring that parentheses are added as needed based on the precedence levels and associativity of the operator.
 def infixOp (prec : Prec) (assoc : Assoc) (lhs : Doc) (op : Doc) (rhs : Doc) : Doc :=

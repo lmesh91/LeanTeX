@@ -10,7 +10,7 @@ Pieces used by template-based notation specifications.
 -/
 inductive TemplatePart where
   | text (doc : Doc)
-  | arg (index : Nat)
+  | arg (index : Nat) (prec? : Option Prec := none)
   deriving Repr, Inhabited
 
 /--

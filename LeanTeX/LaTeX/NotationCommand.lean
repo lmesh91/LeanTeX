@@ -28,12 +28,13 @@ The template parts can be:
 - string literals, which are rendered verbatim
 - named arguments, which refer to explicit binders in the declaration by name
 - indexed arguments, which refer to explicit binders by their position in the declaration (starting at 1)
+- optional precedence overrides for either kind of argument, written as `x:51` or `#2:51`
 
 As an example, the following attributes are equivalent:
 ```lean
 def foo (x : Nat) (y : Nat) : Nat := x + y
-@attribute [latex template:50 x "+" y] foo
-@attribute [latex template:2:50 #1 "+" #2] foo
+@attribute [latex template:50 x "+" y:51] foo
+@attribute [latex template:2:50 #1 "+" #2:51] foo
 ```
 -/
 
@@ -43,6 +44,8 @@ declare_syntax_cat latexSpec
 syntax (name := latexTemplateTextPart) str : latexTemplatePart
 syntax (name := latexTemplateNamedArgPart) ident : latexTemplatePart
 syntax (name := latexTemplateIndexedArgPart) "#" num : latexTemplatePart
+syntax (name := latexTemplateNamedArgWithPrecPart) ident ":" num : latexTemplatePart
+syntax (name := latexTemplateIndexedArgWithPrecPart) "#" num ":" num : latexTemplatePart
 
 syntax (name := latexConstSpec) "const " str : latexSpec
 syntax (name := latexPrefixSpec) "prefix:" num str : latexSpec
@@ -82,7 +85,7 @@ private def validateTemplateArity (arity : Nat) (parts : Array TemplatePart) : E
   for part in parts do
     match part with
     | .text _ => pure ()
-    | .arg index =>
+    | .arg index _ =>
         if index >= arity then
           throw s!"template argument #{index + 1} exceeds arity {arity}"
 
@@ -90,22 +93,43 @@ private def inferTemplateArity (parts : Array TemplatePart) : Nat :=
   parts.foldl (init := 0) fun arity part =>
     match part with
     | .text _ => arity
-    | .arg index => max arity (index + 1)
+    | .arg index _ => max arity (index + 1)
+
+private def decodeTemplateArgIndex (binderIndices : Lean.NameMap Nat) (stx : Lean.Syntax) :
+    Except String Nat := do
+  if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateNamedArgPart ||
+      Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateNamedArgWithPrecPart then
+    let binderName := (⟨Lean.Syntax.getArg stx 0⟩ : Lean.TSyntax `ident).getId.eraseMacroScopes
+    match binderIndices.find? binderName with
+    | some index => pure index
+    | none => throw s!"unknown explicit parameter `{binderName}` in LaTeX template"
+  else if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateIndexedArgPart ||
+      Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateIndexedArgWithPrecPart then
+    let humanIndex := (⟨Lean.Syntax.getArg stx 1⟩ : Lean.TSyntax `num).getNat
+    if humanIndex == 0 then
+      throw "template argument indices start at #1"
+    pure (humanIndex - 1)
+  else
+    throw "invalid LaTeX template argument"
+
+private def decodeTemplateArgPrec? (stx : Lean.Syntax) : Option Prec :=
+  if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateNamedArgWithPrecPart then
+    some (⟨Lean.Syntax.getArg stx 2⟩ : Lean.TSyntax `num).getNat
+  else if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateIndexedArgWithPrecPart then
+    some (⟨Lean.Syntax.getArg stx 3⟩ : Lean.TSyntax `num).getNat
+  else
+    none
 
 private def decodeLatexTemplatePart (binderIndices : Lean.NameMap Nat) (stx : Lean.Syntax) :
     Except String TemplatePart := do
   if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateTextPart then
     pure <| .text (atomDoc ⟨Lean.Syntax.getArg stx 0⟩)
-  else if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateNamedArgPart then
-    let binderName := (⟨Lean.Syntax.getArg stx 0⟩ : Lean.TSyntax `ident).getId.eraseMacroScopes
-    match binderIndices.find? binderName with
-    | some index => pure <| .arg index
-    | none => throw s!"unknown explicit parameter `{binderName}` in LaTeX template"
-  else if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateIndexedArgPart then
-    let humanIndex := (⟨Lean.Syntax.getArg stx 1⟩ : Lean.TSyntax `num).getNat
-    if humanIndex == 0 then
-      throw "template argument indices start at #1"
-    pure <| .arg (humanIndex - 1)
+  else if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateNamedArgPart ||
+      Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateIndexedArgPart ||
+      Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateNamedArgWithPrecPart ||
+      Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexTemplateIndexedArgWithPrecPart then
+    let index ← decodeTemplateArgIndex binderIndices stx
+    pure <| .arg index (decodeTemplateArgPrec? stx)
   else
     throw "invalid LaTeX template part"
 
