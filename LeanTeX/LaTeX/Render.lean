@@ -4,6 +4,13 @@ import LeanTeX.LaTeX.Notation
 namespace LeanTeX
 namespace LaTeX
 
+
+/--
+A custom renderer consumes the rendered arguments of a notation application
+and returns the resulting document fragment.
+-/
+abbrev CustomRenderer := Array Doc → Doc
+
 -- Defines the precedence of builtin operations used in the `Expr` tree.
 def binderPrec : Prec := 1
 def arrowPrec : Prec := 25
@@ -193,6 +200,30 @@ mutual
             Doc.concat partDocs prec
           let restDocs ← (args.extract arity args.size).mapM (renderExprCore ctx)
           pure <| applyDoc rendered restDocs
+        else
+          fallback
+    | .custom arity rendererName =>
+        if h : arity ≤ args.size then
+          let renderedArgs ← (args.extract 0 arity).mapM (renderExprCore ctx)
+          try
+              let customRenderer ← unsafe Lean.evalConst CustomRenderer rendererName
+              let rendered := customRenderer renderedArgs
+              let restDocs ← (args.extract arity args.size).mapM (renderExprCore ctx)
+              pure <| applyDoc rendered restDocs
+          catch _ =>
+              fallback
+        else
+          fallback
+    | .customExpr arity rendererExpr =>
+        if h : arity ≤ args.size then
+          let renderedArgs ← (args.extract 0 arity).mapM (renderExprCore ctx)
+          try
+              let customRenderer ← unsafe Lean.Meta.evalExpr CustomRenderer (Lean.mkConst ``CustomRenderer) rendererExpr
+              let rendered := customRenderer renderedArgs
+              let restDocs ← (args.extract arity args.size).mapM (renderExprCore ctx)
+              pure <| applyDoc rendered restDocs
+          catch _ =>
+              fallback
         else
           fallback
 

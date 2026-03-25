@@ -25,6 +25,8 @@ inductive NotationSpec where
   | infix (prec : Prec) (assoc : Assoc) (op : Doc)
   | command (name : String)
   | template (arity : Nat) (prec : Prec) (parts : Array TemplatePart)
+  | custom (arity : Nat) (renderer : Lean.Name)
+  | customExpr (arity : Nat) (renderer : Lean.Expr)
   deriving Repr, Inhabited
 
 /--

@@ -2,6 +2,25 @@ import LeanTeX
 
 open LeanTeX.LaTeX
 
+@[latex custom:2 (fun
+  | #[x, y] => LeanTeX.LaTeX.Doc.cmd "frac" #[x, y]
+  | _ => LeanTeX.LaTeX.Doc.atom "\\mathsf{bad_inline_div}")]
+def testInlineDiv (x y : Nat) : Nat :=
+  Nat.div x y
+
+@[latex template:80 x:1024 "^{" y:0 "}"]
+def testPow (x y : Nat) : Nat :=
+  Nat.pow x y
+
+#guard_latex_str (2 + 2) => "2 + 2"
+#guard_latex_str (1 = 2) => "1 = 2"
+#guard_latex_str (True ∧ False) => "\\top \\land \\bot"
+#guard_latex_str (¬ True ↔ False) => "\\neg \\top \\leftrightarrow \\bot"
+#guard_latex_str (testInlineDiv (1 + 2) (3 + 4)) => "\\frac{1 + 2}{3 + 4}"
+#guard_latex_str (6 / 3) => "6 \\div 3"
+#guard_latex_str ((1 + 2) / (3 + 4)) => "\\frac{1 + 2}{3 + 4}"
+#guard_latex_str (testPow (1 + 2) 3) => "\\left(1 + 2\\right)^{3}"
+
 def assertEqString (label expected actual : String) : IO Unit := do
   if actual = expected then
     pure ()
@@ -97,6 +116,7 @@ def notationTests : IO Nat := do
   let addSpec : NotationSpec := .infix 10 .left (Doc.atom "+")
   let succSpec : NotationSpec := .postfix 30 (Doc.atom "!")
   let addOverride : NotationSpec := .command "operatorname"
+  let divSpec : NotationSpec := .custom 2 `LeanTeX.LaTeX.division
 
   let env1 := registerNotation env0 `Nat.add addSpec
   assertCounted count "contains inserted notation" (containsNotation env1 `Nat.add)
@@ -114,6 +134,9 @@ def notationTests : IO Nat := do
   assertEqCounted count "local entry order 1" `Nat.add localEntries[0]!.declName
   assertEqCounted count "local entry order 2" `Nat.succ localEntries[1]!.declName
   assertEqCounted count "local entry order 3" `Nat.add localEntries[2]!.declName
+
+  let env4 := registerNotation env3 `HDiv.hDiv divSpec
+  assertSpecEqCounted count "custom renderer lookup" (some divSpec) (findNotation? env4 `HDiv.hDiv)
   count.get
 
 def exprTests : IO Nat := do

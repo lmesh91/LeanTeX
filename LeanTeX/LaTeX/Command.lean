@@ -9,6 +9,7 @@ open Lean
 
 syntax (name := latexStrCmd) "#latex_str " term : command
 syntax (name := latexCmd) "#latex " term : command
+syntax (name := guardLatexStrCmd) "#guard_latex_str " term " => " str : command
 
 private def elabLatexTerm (declName : Lean.Name) (term : Lean.Syntax) : Lean.Elab.Command.CommandElabM String :=
   Lean.withoutModifyingEnv <| Lean.Elab.Command.runTermElabM fun _ =>
@@ -40,6 +41,14 @@ private def mkLatexWidgetInstance (latex : String) : Lean.Widget.WidgetInstance 
       unless rendered.isEmpty do
         let wi := mkLatexWidgetInstance rendered
         Lean.logInfoAt tk <| Lean.MessageData.ofWidget wi m!"{rendered}"
+  | _ => Lean.Elab.throwUnsupportedSyntax
+
+@[command_elab guardLatexStrCmd] meta unsafe def elabGuardLatexStr : Lean.Elab.Command.CommandElab
+  | `(#guard_latex_str%$tk $term => $expected:str) => do
+      let rendered ← Lean.withRef tk <| elabLatexTerm `_guard_latex_str term
+      let expected := expected.getString
+      unless rendered == expected do
+        throwErrorAt tk "unexpected LaTeX output\nexpected: {expected}\nactual:   {rendered}"
   | _ => Lean.Elab.throwUnsupportedSyntax
 
 end LaTeX

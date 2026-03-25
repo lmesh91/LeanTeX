@@ -1,5 +1,7 @@
 import LeanTeX.LaTeX.NotationCommand
 
+-- Provides built-in notations for common types and operations.
+
 namespace LeanTeX
 namespace LaTeX
 
@@ -16,8 +18,23 @@ attribute [latex infixr:35 "\\times"] PProd
 attribute [latex infix:50 "\\mid"] Dvd.dvd
 attribute [latex infixl:65 "+"] HAdd.hAdd
 attribute [latex infixl:65 "-"] HSub.hSub
+-- TODO: make multiplication implicit in most cases
 attribute [latex infixl:70 "\\cdot"] HMul.hMul
-attribute [latex infixl:70 "/"] HDiv.hDiv
+
+-- Use \frac for numerators and denominators that are not atoms
+attribute [latex custom:2 (fun
+| #[numerator, denominator] =>
+  let isNumericLiteral (doc : Doc) :=
+    let s := doc.render
+    !s.isEmpty && s.toList.all Char.isDigit
+  if isNumericLiteral numerator && isNumericLiteral denominator then
+    Doc.infixLeft 70 numerator (Doc.atom "\\div") denominator
+  else if numerator.prec >= 1023 && denominator.prec >= 1023 then
+    Doc.infixLeft 70 numerator (Doc.atom "/") denominator
+  else
+    Doc.cmd "frac" #[numerator, denominator]
+| _ => Doc.empty
+)] HDiv.hDiv
 attribute [latex template:80 #1:1024 "^{" #2:0 "}"] HPow.hPow
 attribute [latex infixl:70 "\\mathbin{\\%}"] HMod.hMod
 attribute [latex infixl:65 "++"] HAppend.hAppend

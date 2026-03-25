@@ -1,5 +1,5 @@
 import Lean
-import LeanTeX.LaTeX.Notation
+import LeanTeX.LaTeX.Render
 
 namespace LeanTeX
 namespace LaTeX
@@ -23,6 +23,7 @@ Here are the supported specifications:
 - `infixr:prec <string>`: specifies a right-associative infix
 - `command <string>`: specifies a command-like rendering with no arguments
 - `template:[arity:]prec <template parts>`: specifies a rendering using a template, where the arity is optionally inferred from the template parts
+- `custom:arity <renderer>`: specifies a custom renderer term of type `Array Doc → Doc` for the first `arity` explicit arguments
 
 The template parts can be:
 - string literals, which are rendered verbatim
@@ -56,6 +57,7 @@ syntax (name := latexInfixRightSpec) "infixr:" num str : latexSpec
 syntax (name := latexCommandSpec) "command " str : latexSpec
 syntax (name := latexTemplateInferSpec) "template:" num (ppSpace latexTemplatePart)+ : latexSpec
 syntax (name := latexTemplateExplicitSpec) "template:" num ":" num (ppSpace latexTemplatePart)+ : latexSpec
+syntax (name := latexCustomSpec) "custom:" num term : latexSpec
 
 private def atomDoc (txt : Lean.TSyntax `str) : Doc :=
   Doc.atom txt.getString
@@ -146,7 +148,8 @@ private def isLatexSpecKind (kind : Lean.Name) : Bool :=
   kind == `LeanTeX.LaTeX.latexInfixRightSpec ||
   kind == `LeanTeX.LaTeX.latexCommandSpec ||
   kind == `LeanTeX.LaTeX.latexTemplateInferSpec ||
-  kind == `LeanTeX.LaTeX.latexTemplateExplicitSpec
+  kind == `LeanTeX.LaTeX.latexTemplateExplicitSpec ||
+  kind == `LeanTeX.LaTeX.latexCustomSpec
 
 private partial def findLatexSpec? (stx : Lean.Syntax) : Option Lean.Syntax :=
   if isLatexSpecKind (Lean.Syntax.getKind stx) then
@@ -157,6 +160,17 @@ private partial def findLatexSpec? (stx : Lean.Syntax) : Option Lean.Syntax :=
         args.findSome? findLatexSpec?
     | _ =>
         none
+
+private def elabCustomRendererTerm (stx : Lean.Syntax) : Lean.CoreM Lean.Expr := do
+  let expectedType := Lean.mkConst ``CustomRenderer
+  Lean.Meta.MetaM.run' do
+    Lean.Elab.Term.TermElabM.run' (ctx := {
+      mayPostpone := false
+      errToSorry := false
+    }) do
+      let renderer ← Lean.Elab.Term.elabTermEnsuringType stx expectedType
+      Lean.Elab.Term.synthesizeSyntheticMVarsNoPostponing
+      Lean.instantiateMVars renderer
 
 private def elabNotationSpec (declName : Lean.Name) (stx : Lean.Syntax) : Lean.CoreM (Except String NotationSpec) := do
   if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexConstSpec then
@@ -197,6 +211,10 @@ private def elabNotationSpec (declName : Lean.Name) (stx : Lean.Syntax) : Lean.C
     return do
       validateTemplateArity arity.getNat parts
       pure <| .template arity.getNat prec.getNat parts
+  else if Lean.Syntax.getKind stx == `LeanTeX.LaTeX.latexCustomSpec then
+    let arity : Lean.TSyntax `num := ⟨Lean.Syntax.getArg stx 1⟩
+    let rendererExpr ← elabCustomRendererTerm (Lean.Syntax.getArg stx 2)
+    return pure <| .customExpr arity.getNat rendererExpr
   else
     return throw "invalid LaTeX notation specification"
 
