@@ -1,15 +1,9 @@
 import Lean
 import LeanTeX.LaTeX.Notation
+import LeanTeX.LaTeX.CustomRenderer
 
 namespace LeanTeX
 namespace LaTeX
-
-
-/--
-A custom renderer consumes the rendered arguments of a notation application
-and returns the resulting document fragment.
--/
-abbrev CustomRenderer := Array Doc → Doc
 
 -- Defines the precedence of builtin operations used in the `Expr` tree.
 def binderPrec : Prec := 1
@@ -35,15 +29,99 @@ private def escapeLaTeX (s : String) : String :=
     | '&' => "\\&"
     | _ => String.singleton c
 
--- Renders a name as a LaTeX atom, escaping special characters.
--- TODO: Convert Unicode characters to LaTeX commands where possible (e.g. α -> \alpha), and
---       parse common patterns like subscripts (e.g. x_12 -> x_{12}).
+/--
+Translate common Unicode identifier characters to the corresponding LaTeX.
+Braces are used around command-style atoms so adjacent identifier characters do
+not get absorbed into the command name.
+-/
+private def renderUnicodeChar? (c : Char) : Option Doc :=
+  match c with
+  | 'α' => some <| Doc.braces (Doc.atom "\\alpha")
+  | 'β' => some <| Doc.braces (Doc.atom "\\beta")
+  | 'γ' => some <| Doc.braces (Doc.atom "\\gamma")
+  | 'δ' => some <| Doc.braces (Doc.atom "\\delta")
+  | 'ε' => some <| Doc.braces (Doc.atom "\\varepsilon")
+  | 'ζ' => some <| Doc.braces (Doc.atom "\\zeta")
+  | 'η' => some <| Doc.braces (Doc.atom "\\eta")
+  | 'θ' => some <| Doc.braces (Doc.atom "\\theta")
+  | 'ι' => some <| Doc.braces (Doc.atom "\\iota")
+  | 'κ' => some <| Doc.braces (Doc.atom "\\kappa")
+  | 'λ' => some <| Doc.braces (Doc.atom "\\lambda")
+  | 'μ' => some <| Doc.braces (Doc.atom "\\mu")
+  | 'ν' => some <| Doc.braces (Doc.atom "\\nu")
+  | 'ξ' => some <| Doc.braces (Doc.atom "\\xi")
+  | 'ο' => some <| Doc.atom "o"
+  | 'π' => some <| Doc.braces (Doc.atom "\\pi")
+  | 'ρ' => some <| Doc.braces (Doc.atom "\\rho")
+  | 'σ' => some <| Doc.braces (Doc.atom "\\sigma")
+  | 'τ' => some <| Doc.braces (Doc.atom "\\tau")
+  | 'υ' => some <| Doc.braces (Doc.atom "\\upsilon")
+  | 'φ' => some <| Doc.braces (Doc.atom "\\phi")
+  | 'χ' => some <| Doc.braces (Doc.atom "\\chi")
+  | 'ψ' => some <| Doc.braces (Doc.atom "\\psi")
+  | 'ω' => some <| Doc.braces (Doc.atom "\\omega")
+  | 'Γ' => some <| Doc.braces (Doc.atom "\\Gamma")
+  | 'Δ' => some <| Doc.braces (Doc.atom "\\Delta")
+  | 'Θ' => some <| Doc.braces (Doc.atom "\\Theta")
+  | 'Λ' => some <| Doc.braces (Doc.atom "\\Lambda")
+  | 'Ξ' => some <| Doc.braces (Doc.atom "\\Xi")
+  | 'Π' => some <| Doc.braces (Doc.atom "\\Pi")
+  | 'Σ' => some <| Doc.braces (Doc.atom "\\Sigma")
+  | 'Υ' => some <| Doc.braces (Doc.atom "\\Upsilon")
+  | 'Φ' => some <| Doc.braces (Doc.atom "\\Phi")
+  | 'Ψ' => some <| Doc.braces (Doc.atom "\\Psi")
+  | 'Ω' => some <| Doc.braces (Doc.atom "\\Omega")
+  | 'ℕ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "N"])
+  | 'ℤ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "Z"])
+  | 'ℚ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "Q"])
+  | 'ℝ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "R"])
+  | 'ℂ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "C"])
+  | 'ℙ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "P"])
+  | _ => none
+
+/--
+Render one identifier character, translating supported Unicode symbols and
+escaping ASCII characters that are special in LaTeX.
+-/
+private def renderNameChar (c : Char) : Doc :=
+  match renderUnicodeChar? c with
+  | some doc => doc
+  | none => Doc.atom (escapeLaTeX (String.singleton c))
+
+/--
+Render one identifier chunk with no underscore-based subscript splitting.
+-/
+private def renderNameChunk (s : String) : Doc :=
+  Doc.concat <| s.toList.map renderNameChar |>.toArray
+
+/--
+Render `base_sub1_sub2` as nested subscripts. Empty chunks fall back to the
+literal escaped name so malformed identifiers do not lose information.
+-/
+private def renderNameWithSubscripts (parts : List String) : Doc :=
+  match parts with
+  | [] => Doc.empty
+  | base :: subs =>
+      subs.foldl (init := renderNameChunk base) fun acc sub =>
+        Doc.subscript acc (renderNameChunk sub)
+
+-- Parse simple underscore-separated names like `x_12` as subscripts and
+-- translate common Unicode symbols to their LaTeX equivalents.
 private def renderNameAtom (s : String) : Doc :=
-  Doc.atom (escapeLaTeX s)
+  let parts := s.splitOn "_"
+  if parts.length > 1 && parts.all fun part => !part.isEmpty then
+    renderNameWithSubscripts parts
+  else
+    renderNameChunk s
 
 -- Renders a constant name as a LaTeX atom, using \mathsf to distinguish it from variables.
 private def renderConstName (declName : Lean.Name) : Doc :=
-  Doc.cmd "mathsf" #[renderNameAtom declName.toString]
+  let s := declName.toString
+  let doc := renderNameAtom s
+  if s.toList.all (fun c => c.toNat < 128) then
+    Doc.cmd "mathsf" #[doc]
+  else
+    doc
 
 -- Converts a universe level as a LaTeX using its string representation.
 private def renderLevel (u : Lean.Level) : Doc :=

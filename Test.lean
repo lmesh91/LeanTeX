@@ -200,7 +200,7 @@ def exprTests : IO Nat := do
   checkExprRender "lambda freshening" env
     (renderExprString (Lean.Expr.lam `x (Lean.mkConst `Nat)
       (Lean.Expr.lam `x (Lean.mkConst `Nat) (.bvar 0) .default) .default))
-    "\\lambda x : \\mathsf{Nat}, \\lambda x\\_1 : \\mathsf{Nat}, x\\_1"
+    "\\lambda x : \\mathsf{Nat}, \\lambda x_{1} : \\mathsf{Nat}, x_{1}"
 
   checkExprRender "let fallback" env
     (renderExprString (Lean.Expr.letE `x (Lean.mkConst `Nat) (Lean.mkNatLit 1) (.bvar 0) false))
@@ -209,6 +209,15 @@ def exprTests : IO Nat := do
   checkExprRender "fvar fallback" env
     (Lean.Meta.withLocalDecl `x .default (Lean.mkConst `Nat) fun x => renderExprString x)
     "x"
+  checkExprRender "fvar subscript name" env
+    (Lean.Meta.withLocalDecl `x_12 .default (Lean.mkConst `Nat) fun x => renderExprString x)
+    "x_{12}"
+  checkExprRender "fvar unicode greek" env
+    (Lean.Meta.withLocalDecl `α .default (Lean.mkConst `Nat) fun x => renderExprString x)
+    "{\\alpha}"
+  checkExprRender "fvar unicode blackboard bold" env
+    (Lean.Meta.withLocalDecl `ℕ .default (Lean.mkConst `Nat) fun x => renderExprString x)
+    "{\\mathbb{N}}"
 
   count.get
 

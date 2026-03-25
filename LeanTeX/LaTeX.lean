@@ -1,5 +1,6 @@
 import LeanTeX.LaTeX.Basic
 import LeanTeX.LaTeX.Notation
+import LeanTeX.LaTeX.CustomRenderer
 import LeanTeX.LaTeX.NotationCommand
 import LeanTeX.LaTeX.InitNotation
 import LeanTeX.LaTeX.Render

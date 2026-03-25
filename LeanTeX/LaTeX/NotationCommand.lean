@@ -1,5 +1,6 @@
 import Lean
-import LeanTeX.LaTeX.Render
+import LeanTeX.LaTeX.Notation
+import LeanTeX.LaTeX.CustomRenderer
 
 namespace LeanTeX
 namespace LaTeX
