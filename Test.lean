@@ -15,10 +15,6 @@ def mkTestEnv : IO Lean.Environment := do
   Lean.initSearchPath (← Lean.findSysroot)
   Lean.importModules #[{ module := `Init }] {} (loadExts := true)
 
-def mkLeanTeXEnv : IO Lean.Environment := do
-  Lean.initSearchPath (← Lean.findSysroot)
-  Lean.importModules #[{ module := `LeanTeX }] {} (loadExts := true)
-
 def runMetaWithEnv (env : Lean.Environment) (x : Lean.Meta.MetaM α) : IO α := do
   let coreCtx : Lean.Core.Context := {
     fileName := "<test>"
