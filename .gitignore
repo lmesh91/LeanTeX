@@ -3,4 +3,6 @@ build/
 .idea/
 .vscode/
 .lake/
+.agents/
+.codex/
 leantex.ini

@@ -30,63 +30,10 @@ private def escapeLaTeX (s : String) : String :=
     | _ => String.singleton c
 
 /--
-Translate common Unicode identifier characters to the corresponding LaTeX.
-Braces are used around command-style atoms so adjacent identifier characters do
-not get absorbed into the command name.
--/
-private def renderUnicodeChar? (c : Char) : Option Doc :=
-  match c with
-  | 'α' => some <| Doc.braces (Doc.atom "\\alpha")
-  | 'β' => some <| Doc.braces (Doc.atom "\\beta")
-  | 'γ' => some <| Doc.braces (Doc.atom "\\gamma")
-  | 'δ' => some <| Doc.braces (Doc.atom "\\delta")
-  | 'ε' => some <| Doc.braces (Doc.atom "\\varepsilon")
-  | 'ζ' => some <| Doc.braces (Doc.atom "\\zeta")
-  | 'η' => some <| Doc.braces (Doc.atom "\\eta")
-  | 'θ' => some <| Doc.braces (Doc.atom "\\theta")
-  | 'ι' => some <| Doc.braces (Doc.atom "\\iota")
-  | 'κ' => some <| Doc.braces (Doc.atom "\\kappa")
-  | 'λ' => some <| Doc.braces (Doc.atom "\\lambda")
-  | 'μ' => some <| Doc.braces (Doc.atom "\\mu")
-  | 'ν' => some <| Doc.braces (Doc.atom "\\nu")
-  | 'ξ' => some <| Doc.braces (Doc.atom "\\xi")
-  | 'ο' => some <| Doc.atom "o"
-  | 'π' => some <| Doc.braces (Doc.atom "\\pi")
-  | 'ρ' => some <| Doc.braces (Doc.atom "\\rho")
-  | 'σ' => some <| Doc.braces (Doc.atom "\\sigma")
-  | 'τ' => some <| Doc.braces (Doc.atom "\\tau")
-  | 'υ' => some <| Doc.braces (Doc.atom "\\upsilon")
-  | 'φ' => some <| Doc.braces (Doc.atom "\\phi")
-  | 'χ' => some <| Doc.braces (Doc.atom "\\chi")
-  | 'ψ' => some <| Doc.braces (Doc.atom "\\psi")
-  | 'ω' => some <| Doc.braces (Doc.atom "\\omega")
-  | 'Γ' => some <| Doc.braces (Doc.atom "\\Gamma")
-  | 'Δ' => some <| Doc.braces (Doc.atom "\\Delta")
-  | 'Θ' => some <| Doc.braces (Doc.atom "\\Theta")
-  | 'Λ' => some <| Doc.braces (Doc.atom "\\Lambda")
-  | 'Ξ' => some <| Doc.braces (Doc.atom "\\Xi")
-  | 'Π' => some <| Doc.braces (Doc.atom "\\Pi")
-  | 'Σ' => some <| Doc.braces (Doc.atom "\\Sigma")
-  | 'Υ' => some <| Doc.braces (Doc.atom "\\Upsilon")
-  | 'Φ' => some <| Doc.braces (Doc.atom "\\Phi")
-  | 'Ψ' => some <| Doc.braces (Doc.atom "\\Psi")
-  | 'Ω' => some <| Doc.braces (Doc.atom "\\Omega")
-  | 'ℕ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "N"])
-  | 'ℤ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "Z"])
-  | 'ℚ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "Q"])
-  | 'ℝ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "R"])
-  | 'ℂ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "C"])
-  | 'ℙ' => some <| Doc.braces (Doc.cmd "mathbb" #[Doc.atom "P"])
-  | _ => none
-
-/--
-Render one identifier character, translating supported Unicode symbols and
-escaping ASCII characters that are special in LaTeX.
+Render one identifier character, escaping ASCII characters that are special in LaTeX.
 -/
 private def renderNameChar (c : Char) : Doc :=
-  match renderUnicodeChar? c with
-  | some doc => doc
-  | none => Doc.atom (escapeLaTeX (String.singleton c))
+  Doc.atom (escapeLaTeX (String.singleton c))
 
 /--
 Render one identifier chunk with no underscore-based subscript splitting.
@@ -95,24 +42,119 @@ private def renderNameChunk (s : String) : Doc :=
   Doc.concat <| s.toList.map renderNameChar |>.toArray
 
 /--
-Render `base_sub1_sub2` as nested subscripts. Empty chunks fall back to the
-literal escaped name so malformed identifiers do not lose information.
+Translate Lean's Unicode subscript identifier characters back to the
+corresponding baseline characters.
 -/
-private def renderNameWithSubscripts (parts : List String) : Doc :=
-  match parts with
-  | [] => Doc.empty
-  | base :: subs =>
-      subs.foldl (init := renderNameChunk base) fun acc sub =>
-        Doc.subscript acc (renderNameChunk sub)
+private def unicodeSubscriptChar? (c : Char) : Option String :=
+  match c with
+  | 'ᵢ' => some "i"
+  | 'ᵣ' => some "r"
+  | 'ᵤ' => some "u"
+  | 'ᵥ' => some "v"
+  | 'ᵦ' => some "β"
+  | 'ᵧ' => some "γ"
+  | 'ᵨ' => some "ρ"
+  | 'ᵩ' => some "φ"
+  | 'ᵪ' => some "χ"
+  | '₀' => some "0"
+  | '₁' => some "1"
+  | '₂' => some "2"
+  | '₃' => some "3"
+  | '₄' => some "4"
+  | '₅' => some "5"
+  | '₆' => some "6"
+  | '₇' => some "7"
+  | '₈' => some "8"
+  | '₉' => some "9"
+  | 'ₐ' => some "a"
+  | 'ₑ' => some "e"
+  | 'ₒ' => some "o"
+  | 'ₓ' => some "x"
+  | 'ₔ' => some "ə"
+  | 'ₕ' => some "h"
+  | 'ₖ' => some "k"
+  | 'ₗ' => some "l"
+  | 'ₘ' => some "m"
+  | 'ₙ' => some "n"
+  | 'ₚ' => some "p"
+  | 'ₛ' => some "s"
+  | 'ₜ' => some "t"
+  | 'ⱼ' => some "j"
+  | _ => none
 
--- Parse simple underscore-separated names like `x_12` as subscripts and
--- translate common Unicode symbols to their LaTeX equivalents.
-private def renderNameAtom (s : String) : Doc :=
-  let parts := s.splitOn "_"
-  if parts.length > 1 && parts.all fun part => !part.isEmpty then
-    renderNameWithSubscripts parts
+private inductive NameToken where
+  | normal (value : String)
+  | subscript (value : String)
+
+private inductive NameParseMode where
+  | normal
+  | asciiSubscript
+  | unicodeSubscript
+
+private def pushNameToken? (tokens : Array NameToken) (mode : NameParseMode) (value : String) :
+    Option (Array NameToken) :=
+  if value.isEmpty then
+    match mode with
+    | .normal => some tokens
+    | .asciiSubscript | .unicodeSubscript => none
   else
-    renderNameChunk s
+    let token :=
+      match mode with
+      | .normal => NameToken.normal value
+      | .asciiSubscript | .unicodeSubscript => NameToken.subscript value
+    some (tokens.push token)
+
+/--
+Parse name text into ordinary chunks and subscript chunks. ASCII underscores
+consume the following whole chunk (`x_12a` -> `x_{12a}`), while Unicode
+subscript characters only consume the contiguous Unicode subscript run
+(`x₁₂a` -> `x_{12}a`).
+-/
+private def parseNameTokens? (s : String) : Option (Array NameToken) :=
+  let rec loop (chars : List Char) (tokens : Array NameToken) (mode : NameParseMode) (buf : String) :
+      Option (Array NameToken) :=
+    match chars with
+    | [] => pushNameToken? tokens mode buf
+    | c :: chars =>
+        if c == '_' then
+          match pushNameToken? tokens mode buf with
+          | some tokens => loop chars tokens .asciiSubscript ""
+          | none => none
+        else
+          match unicodeSubscriptChar? c with
+          | some sub =>
+              match mode with
+              | .normal =>
+                  match pushNameToken? tokens mode buf with
+                  | some tokens => loop chars tokens .unicodeSubscript sub
+                  | none => none
+              | .asciiSubscript | .unicodeSubscript =>
+                  loop chars tokens mode (buf ++ sub)
+          | none =>
+              match mode with
+              | .unicodeSubscript =>
+                  match pushNameToken? tokens mode buf with
+                  | some tokens => loop chars tokens .normal (String.singleton c)
+                  | none => none
+              | .normal | .asciiSubscript =>
+                  loop chars tokens mode (buf.push c)
+  loop s.toList #[] .normal ""
+
+private def renderNameTokens? (tokens : Array NameToken) : Option Doc :=
+  match tokens.toList with
+  | [] => some Doc.empty
+  | .normal base :: rest =>
+      some <| rest.foldl (init := renderNameChunk base) fun acc token =>
+        match token with
+        | .normal value => Doc.concat #[acc, renderNameChunk value]
+        | .subscript value => Doc.subscript acc (renderNameChunk value)
+  | .subscript _ :: _ => none
+
+-- Parse names like `x_12` and `x₁₂` as subscripts.
+private def renderNameAtom (s : String) : Doc :=
+  match parseNameTokens? s >>= renderNameTokens? with
+  | some doc => doc
+  | none => renderNameChunk s
 
 -- Renders a constant name as a LaTeX atom, using \mathsf to distinguish it from variables.
 private def renderConstName (declName : Lean.Name) : Doc :=

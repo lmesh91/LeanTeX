@@ -32,7 +32,7 @@ inductive Doc where
 namespace Doc
 
 -- Returns the precedence level of a `Doc`. For an atom, it returns `tightPrec`, and for a sequence, it returns the stored precedence.
-def prec : Doc -> Prec
+def prec : Doc → Prec
   | .atom _ => tightPrec
   | .seq prec _ => prec
 
@@ -123,7 +123,7 @@ def subscript (base : Doc) (sub : Doc) : Doc :=
   concat #[protectAt tightPrec base, text "_{", protectAt 0 sub, text "}"] tightPrec
 
 -- Renders a `Doc` to a `String` by recursively concatenating the string representations of its parts.
-def render : Doc -> String
+def render : Doc → String
   | .atom value => value
   | .seq _ parts =>
       parts.foldl (init := "") fun acc part =>

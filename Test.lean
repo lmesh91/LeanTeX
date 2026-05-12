@@ -212,12 +212,9 @@ def exprTests : IO Nat := do
   checkExprRender "fvar subscript name" env
     (Lean.Meta.withLocalDecl `x_12 .default (Lean.mkConst `Nat) fun x => renderExprString x)
     "x_{12}"
-  checkExprRender "fvar unicode greek" env
-    (Lean.Meta.withLocalDecl `α .default (Lean.mkConst `Nat) fun x => renderExprString x)
-    "{\\alpha}"
-  checkExprRender "fvar unicode blackboard bold" env
-    (Lean.Meta.withLocalDecl `ℕ .default (Lean.mkConst `Nat) fun x => renderExprString x)
-    "{\\mathbb{N}}"
+  checkExprRender "fvar unicode subscript name" env
+    (Lean.Meta.withLocalDecl `x₁₂ .default (Lean.mkConst `Nat) fun x => renderExprString x)
+    "x_{12}"
 
   count.get
 
